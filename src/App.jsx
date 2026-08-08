@@ -91,14 +91,32 @@ function App() {
     event.preventDefault()
     const content = draft.trim()
     if (!content || !activeId || sending) return
+    const localUserId = `local-user-${Date.now()}`
+    const assistantId = `stream-${Date.now()}`
     setDraft('')
     setSending(true)
-    setMessages((current) => [...current, { id: `local-${Date.now()}`, role: 'user', content }])
+    setMessages((current) => [
+      ...current,
+      { id: localUserId, role: 'user', content },
+      { id: assistantId, role: 'assistant', content: '', streaming: true }
+    ])
     try {
-      const data = await api.post(`/api/conversations/${activeId}/messages`, { content })
-      setMessages((current) => [...current.filter((message) => !String(message.id).startsWith('local-')), ...data.messages])
+      const result = await streamMessage(activeId, content, (delta) => {
+        setMessages((current) => current.map((message) => message.id === assistantId
+          ? { ...message, content: `${message.content || ''}${delta}` }
+          : message))
+      })
+      setMessages((current) => current.map((message) => {
+        if (message.id === localUserId) return result.userMessage
+        if (message.id === assistantId) return result.assistantMessage
+        return message
+      }))
       const refreshed = await api.get('/api/conversations')
       setConversations(refreshed.conversations)
+    } catch {
+      setMessages((current) => current.map((message) => message.id === assistantId
+        ? { ...message, content: 'Không thể stream câu trả lời. Vui lòng thử lại.', streaming: false }
+        : message))
     } finally {
       setSending(false)
     }
@@ -180,10 +198,9 @@ function App() {
           {messages.map((message) => (
             <article key={message.id} className={`message ${message.role}`}>
               <div className="bubble-icon">{message.role === 'assistant' ? <Sparkles size={16} /> : <UserRound size={16} />}</div>
-              <p>{message.content}</p>
+              <p>{message.streaming && !message.content ? <span className="thinking">Thinking...</span> : message.content}</p>
             </article>
           ))}
-          {sending && <article className="message assistant"><div className="bubble-icon"><Sparkles size={16} /></div><p>Thinking...</p></article>}
         </section>
 
         <form className="composer" onSubmit={sendMessage}>
@@ -220,6 +237,55 @@ function App() {
       </aside>
     </div>
   )
+}
+
+async function streamMessage(conversationId, content, onDelta) {
+  const response = await fetch(`/api/conversations/${conversationId}/messages/stream`, {
+    method: 'POST',
+    credentials: 'include',
+    headers: { 'content-type': 'application/json' },
+    body: JSON.stringify({ content })
+  })
+  if (!response.ok || !response.body) throw new Error('STREAM_FAILED')
+
+  const reader = response.body.getReader()
+  const decoder = new TextDecoder()
+  let buffer = ''
+  let currentEvent = 'message'
+  let result = null
+
+  while (true) {
+    const { value, done } = await reader.read()
+    if (done) break
+    buffer += decoder.decode(value, { stream: true })
+    const events = buffer.split('\n\n')
+    buffer = events.pop() || ''
+    for (const eventBlock of events) {
+      const parsed = parseSseEvent(eventBlock, currentEvent)
+      currentEvent = parsed.lastEvent
+      if (!parsed.data) continue
+      if (parsed.event === 'delta') onDelta(parsed.data.delta || '')
+      if (parsed.event === 'done') result = parsed.data
+      if (parsed.event === 'error') throw new Error(parsed.data.error || 'STREAM_FAILED')
+    }
+  }
+
+  if (!result) throw new Error('STREAM_INCOMPLETE')
+  return result
+}
+
+function parseSseEvent(block, fallbackEvent) {
+  let event = fallbackEvent
+  const dataLines = []
+  for (const line of block.split('\n')) {
+    if (line.startsWith('event:')) event = line.slice(6).trim()
+    if (line.startsWith('data:')) dataLines.push(line.slice(5).trim())
+  }
+  return {
+    event,
+    lastEvent: event,
+    data: dataLines.length ? JSON.parse(dataLines.join('\n')) : null
+  }
 }
 
 createRoot(document.getElementById('root')).render(<App />)

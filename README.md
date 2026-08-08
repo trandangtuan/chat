@@ -7,6 +7,7 @@ Node.js ChatGPT-style multi-user chat app.
 - Personal MCP server registry per user
 - Personal skill instructions per user
 - OpenRouter chat completions from the server with `OPENROUTER_API_KEY`; otherwise the app returns a local development response
+- Streaming assistant responses with a `Thinking...` state while the first token is pending
 
 ## Run Locally
 
@@ -19,6 +20,8 @@ npm run dev
 Open the Vite URL for the frontend. API runs on `PORT` from `.env`.
 
 OpenRouter is called only from `server/ai.js`, so the API key stays on the backend and is never exposed to the browser.
+
+The chat UI posts to `POST /api/conversations/:id/messages/stream` and reads server-sent events for token deltas. The non-streaming JSON endpoint remains available at `POST /api/conversations/:id/messages`.
 
 ## Production
 

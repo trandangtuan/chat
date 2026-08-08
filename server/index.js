@@ -7,7 +7,7 @@ import { z } from 'zod'
 import { config } from './config.js'
 import { db } from './db.js'
 import { authRoutes, requireUser } from './auth.js'
-import { generateAssistantReply } from './ai.js'
+import { generateAssistantReply, streamAssistantReply } from './ai.js'
 
 const app = express()
 
@@ -82,6 +82,67 @@ app.post('/api/conversations/:id/messages', requireUser, async (req, res, next) 
       usage: assistant.usage
     })
   } catch (error) {
+    next(error)
+  }
+})
+
+app.post('/api/conversations/:id/messages/stream', requireUser, async (req, res, next) => {
+  let streamStarted = false
+  try {
+    assertOwnsConversation(req.user.id, req.params.id)
+    const { content } = z.object({ content: z.string().min(1).max(20000) }).parse(req.body)
+    const userMessageId = nanoid()
+    const assistantMessageId = nanoid()
+    db.prepare('INSERT INTO messages (id, conversation_id, user_id, role, content) VALUES (?, ?, ?, ?, ?)')
+      .run(userMessageId, req.params.id, req.user.id, 'user', content)
+
+    res.writeHead(200, {
+      'content-type': 'text/event-stream; charset=utf-8',
+      'cache-control': 'no-cache, no-transform',
+      connection: 'keep-alive',
+      'x-accel-buffering': 'no'
+    })
+    streamStarted = true
+    writeSse(res, 'start', { userMessageId, assistantMessageId })
+
+    const messages = db.prepare(`
+      SELECT role, content
+      FROM messages
+      WHERE conversation_id = ? AND user_id = ?
+      ORDER BY created_at ASC
+    `).all(req.params.id, req.user.id)
+    const skills = listSkills(req.user.id)
+    const mcpServers = listMcpServers(req.user.id)
+    const assistant = await streamAssistantReply({
+      user: req.user,
+      messages,
+      skills,
+      mcpServers,
+      onDelta: async (delta) => writeSse(res, 'delta', { delta })
+    })
+
+    db.prepare('INSERT INTO messages (id, conversation_id, user_id, role, content) VALUES (?, ?, ?, ?, ?)')
+      .run(assistantMessageId, req.params.id, req.user.id, 'assistant', assistant.content)
+    recordTokenUsage({
+      userId: req.user.id,
+      conversationId: req.params.id,
+      messageId: assistantMessageId,
+      usage: assistant.usage
+    })
+    db.prepare('UPDATE conversations SET title = CASE WHEN title = ? THEN ? ELSE title END, updated_at = CURRENT_TIMESTAMP WHERE id = ?')
+      .run('New chat', content.slice(0, 80), req.params.id)
+    writeSse(res, 'done', {
+      userMessage: { id: userMessageId, role: 'user', content },
+      assistantMessage: { id: assistantMessageId, role: 'assistant', content: assistant.content },
+      usage: assistant.usage
+    })
+    res.end()
+  } catch (error) {
+    if (streamStarted) {
+      writeSse(res, 'error', { error: error.message || 'STREAM_FAILED' })
+      res.end()
+      return
+    }
     next(error)
   }
 })
@@ -202,4 +263,9 @@ function recordTokenUsage({ userId, conversationId, messageId, usage }) {
     Number(safeUsage.totalTokens || 0),
     JSON.stringify(safeUsage.raw || {})
   )
+}
+
+function writeSse(res, event, data) {
+  res.write(`event: ${event}\n`)
+  res.write(`data: ${JSON.stringify(data)}\n\n`)
 }
