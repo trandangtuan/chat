@@ -12,6 +12,7 @@
 }
 
 * { box-sizing: border-box; }
+html, body, #root { height: 100%; overflow: hidden; }
 body { margin: 0; background: var(--bg); color: var(--text); }
 button, input, textarea { font: inherit; }
 button { cursor: pointer; }
@@ -64,19 +65,20 @@ button { cursor: pointer; }
   height: 100vh;
   display: grid;
   grid-template-columns: 280px minmax(0, 1fr) 340px;
+  overflow: hidden;
 }
 
 .sidebar, .settings-panel {
   background: var(--panel);
   border-right: 1px solid var(--line);
   min-height: 0;
+  overflow: hidden;
   padding: 18px;
 }
 
 .settings-panel {
   border-right: 0;
   border-left: 1px solid var(--line);
-  overflow: auto;
 }
 
 .brand {
@@ -109,7 +111,8 @@ button { cursor: pointer; }
   display: grid;
   gap: 6px;
   margin: 18px 0;
-  overflow: auto;
+  min-height: 0;
+  overflow: hidden;
 }
 
 .conversation-list button {
@@ -136,8 +139,11 @@ button { cursor: pointer; }
 
 .chat-panel {
   min-width: 0;
+  min-height: 0;
+  height: 100vh;
   display: grid;
   grid-template-rows: auto 1fr auto;
+  overflow: hidden;
 }
 
 .topbar {
@@ -156,7 +162,8 @@ button { cursor: pointer; }
 
 .messages {
   min-height: 0;
-  overflow: auto;
+  overflow-y: auto;
+  overflow-x: hidden;
   padding: 28px clamp(18px, 5vw, 80px);
 }
 
