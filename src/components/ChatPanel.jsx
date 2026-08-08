@@ -1,3 +1,4 @@
+import React from 'react'
 import { Bot, Plus, Send, Sparkles, UserRound } from 'lucide-react'
 
 export function ChatPanel({

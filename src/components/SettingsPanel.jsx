@@ -1,3 +1,4 @@
+import React from 'react'
 import { Boxes, Plus, ServerCog } from 'lucide-react'
 
 export function SettingsPanel({

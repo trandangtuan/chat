@@ -1,3 +1,4 @@
+import React from 'react'
 import { Sparkles, UserRound } from 'lucide-react'
 
 export function LoginScreen() {

@@ -1,3 +1,4 @@
+import React from 'react'
 import { ChevronRight, LogOut, MessageSquare, Plus, Sparkles } from 'lucide-react'
 
 export function Sidebar({ user, conversations, activeId, onCreateConversation, onSelectConversation, onLogout }) {
