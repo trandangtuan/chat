@@ -30,6 +30,7 @@ export function SettingsPanel({
   onAddRule,
   onAddMemory
 }) {
+  const [activeSetting, setActiveSetting] = useState('mcp')
   const [mcpView, setMcpView] = useState('list')
 
   function updateMcpForm(patch) {
@@ -45,53 +46,106 @@ export function SettingsPanel({
 
   return (
     <aside className="settings-panel">
+      <div className="settings-title">
+        <strong>Settings</strong>
+        <small>Workspace controls</small>
+      </div>
+      <SettingsMenu activeSetting={activeSetting} onSelect={(setting) => {
+        setActiveSetting(setting)
+        setMcpView('list')
+      }} />
       {settingsError && <div className="settings-error">{settingsError}</div>}
-      {mcpView === 'add' ? (
-        <NewPluginForm
-          mcpForm={mcpForm}
-          onUpdate={updateMcpForm}
-          onSubmit={submitMcpServer}
-          onBack={() => setMcpView('list')}
-        />
-      ) : (
-        <McpServerList servers={mcpServers} onAdd={() => setMcpView('add')} onConnect={onConnectMcpServer} onDelete={onDeleteMcpServer} onRefreshTools={onRefreshMcpTools} />
-      )}
 
-      <section>
-        <h3><Coins size={17} /> Token usage</h3>
-        <TokenUsagePanel tokenUsage={tokenUsage} />
-      </section>
+      <div className="settings-content">
+        {activeSetting === 'mcp' && (mcpView === 'add' ? (
+          <NewPluginForm
+            mcpForm={mcpForm}
+            onUpdate={updateMcpForm}
+            onSubmit={submitMcpServer}
+            onBack={() => setMcpView('list')}
+          />
+        ) : (
+          <McpServerList servers={mcpServers} onAdd={() => setMcpView('add')} onConnect={onConnectMcpServer} onDelete={onDeleteMcpServer} onRefreshTools={onRefreshMcpTools} />
+        ))}
 
-      <section>
-        <h3><ListChecks size={17} /> Rules</h3>
-        <form onSubmit={onAddRule} className="setting-form">
-          <input value={ruleTitle} onChange={(event) => onRuleTitleChange(event.target.value)} placeholder="Rule name" />
-          <textarea value={ruleInstruction} onChange={(event) => onRuleInstructionChange(event.target.value)} placeholder="Always answer in Vietnamese, be concise..." />
-          <button><Plus size={16} /> Add rule</button>
-        </form>
-        <SettingItemList items={rules} emptyText="No rules yet" contentKey="instruction" />
-      </section>
+        {activeSetting === 'skills' && (
+          <SettingsSection icon={<Boxes size={17} />} title="Skill settings">
+            <form onSubmit={onAddSkill} className="setting-form">
+              <input value={skillName} onChange={(event) => onSkillNameChange(event.target.value)} placeholder="Skill name" />
+              <textarea value={skillInstructions} onChange={(event) => onSkillInstructionsChange(event.target.value)} placeholder="Instructions for this skill" />
+              <button><Plus size={16} /> Add skill</button>
+            </form>
+            <SettingItemList items={skills} emptyText="No personal skills yet" titleKey="name" contentKey="instructions" />
+          </SettingsSection>
+        )}
 
-      <section>
-        <h3><Brain size={17} /> Memory</h3>
-        <form onSubmit={onAddMemory} className="setting-form">
-          <input value={memoryTitle} onChange={(event) => onMemoryTitleChange(event.target.value)} placeholder="Memory title" />
-          <textarea value={memoryContent} onChange={(event) => onMemoryContentChange(event.target.value)} placeholder="Remember this user's preferences, projects, or context" />
-          <button><Plus size={16} /> Add memory</button>
-        </form>
-        <SettingItemList items={memories} emptyText="No memory saved yet" contentKey="content" />
-      </section>
+        {activeSetting === 'rules' && (
+          <SettingsSection icon={<ListChecks size={17} />} title="Rule settings">
+            <form onSubmit={onAddRule} className="setting-form">
+              <input value={ruleTitle} onChange={(event) => onRuleTitleChange(event.target.value)} placeholder="Rule name" />
+              <textarea value={ruleInstruction} onChange={(event) => onRuleInstructionChange(event.target.value)} placeholder="Always answer in Vietnamese, be concise..." />
+              <button><Plus size={16} /> Add rule</button>
+            </form>
+            <SettingItemList items={rules} emptyText="No rules yet" contentKey="instruction" />
+          </SettingsSection>
+        )}
 
-      <section>
-        <h3><Boxes size={17} /> Skills</h3>
-        <form onSubmit={onAddSkill} className="setting-form">
-          <input value={skillName} onChange={(event) => onSkillNameChange(event.target.value)} placeholder="Skill name" />
-          <textarea value={skillInstructions} onChange={(event) => onSkillInstructionsChange(event.target.value)} placeholder="Instructions for this skill" />
-          <button><Plus size={16} /> Add skill</button>
-        </form>
-        <SettingItemList items={skills} emptyText="No personal skills yet" titleKey="name" contentKey="instructions" />
-      </section>
+        {activeSetting === 'memory' && (
+          <SettingsSection icon={<Brain size={17} />} title="Memory settings">
+            <form onSubmit={onAddMemory} className="setting-form">
+              <input value={memoryTitle} onChange={(event) => onMemoryTitleChange(event.target.value)} placeholder="Memory title" />
+              <textarea value={memoryContent} onChange={(event) => onMemoryContentChange(event.target.value)} placeholder="Remember this user's preferences, projects, or context" />
+              <button><Plus size={16} /> Add memory</button>
+            </form>
+            <SettingItemList items={memories} emptyText="No memory saved yet" contentKey="content" />
+          </SettingsSection>
+        )}
+
+        {activeSetting === 'tokens' && (
+          <SettingsSection icon={<Coins size={17} />} title="Token usage">
+            <TokenUsagePanel tokenUsage={tokenUsage} />
+          </SettingsSection>
+        )}
+      </div>
     </aside>
+  )
+}
+
+function SettingsMenu({ activeSetting, onSelect }) {
+  const items = [
+    { id: 'mcp', label: 'MCP', icon: ServerCog },
+    { id: 'skills', label: 'Skills', icon: Boxes },
+    { id: 'rules', label: 'Rules', icon: ListChecks },
+    { id: 'memory', label: 'Memory', icon: Brain },
+    { id: 'tokens', label: 'Token usage', icon: Coins }
+  ]
+
+  return (
+    <nav className="settings-menu" aria-label="Settings menu">
+      {items.map((item) => {
+        const Icon = item.icon
+        return (
+          <button
+            key={item.id}
+            type="button"
+            className={activeSetting === item.id ? 'active' : ''}
+            onClick={() => onSelect(item.id)}
+          >
+            <Icon size={16} />
+            <span>{item.label}</span>
+          </button>
+        )
+      })}
+    </nav>
+  )
+}
+
+function SettingsSection({ icon, title, children }) {
+  return (
+    <section className="settings-section">
+      <h3>{icon} {title}</h3>
+      {children}
+    </section>
   )
 }
 

@@ -13,6 +13,7 @@ Time zone: Asia/Ho_Chi_Minh (UTC+07:00).
 - Show each user's token usage summary and recent request history in Settings.
 - Load `/api/usage/token-history?limit=50` when the workspace starts.
 - Refresh token usage after each streamed assistant response completes.
+- Add a Settings menu with separate MCP, Skills, Rules, Memory, and Token usage views.
 
 ## 2026-08-09 16:17:53 +0700 - `d8c89e3`
 

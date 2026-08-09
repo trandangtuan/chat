@@ -79,6 +79,9 @@ button { cursor: pointer; }
 .settings-panel {
   border-right: 0;
   border-left: 1px solid var(--line);
+  display: flex;
+  flex-direction: column;
+  gap: 14px;
 }
 
 .brand {
@@ -244,10 +247,66 @@ button { cursor: pointer; }
   color: white;
 }
 
-.settings-panel section + section { margin-top: 28px; }
 .settings-panel h3 { display: flex; gap: 8px; align-items: center; margin: 0 0 12px; font-size: 15px; }
+.settings-title {
+  display: grid;
+  gap: 3px;
+}
+
+.settings-title strong {
+  color: var(--text);
+  font-size: 18px;
+}
+
+.settings-menu {
+  display: grid;
+  gap: 6px;
+}
+
+.settings-menu button {
+  min-height: 38px;
+  display: flex;
+  align-items: center;
+  gap: 9px;
+  border: 1px solid transparent;
+  border-radius: 8px;
+  padding: 0 10px;
+  background: transparent;
+  color: var(--text);
+  font-weight: 700;
+  text-align: left;
+}
+
+.settings-menu button:hover {
+  background: #f8fafc;
+  border-color: var(--line);
+}
+
+.settings-menu button.active {
+  background: var(--soft-blue);
+  border-color: #bfdbfe;
+  color: #1d4ed8;
+}
+
+.settings-menu span {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.settings-content {
+  min-height: 0;
+  overflow-y: auto;
+  padding-right: 2px;
+}
+
+.settings-section {
+  display: grid;
+  gap: 12px;
+}
+
 .settings-error {
-  margin-bottom: 12px;
   padding: 10px 12px;
   border: 1px solid #fecaca;
   border-radius: 8px;
