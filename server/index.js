@@ -214,13 +214,25 @@ app.post('/api/mcp-servers/:id/connect', requireUser, (req, res) => {
     })
   }
 
-  const state = crypto.randomBytes(32).toString('base64url')
-  db.prepare('INSERT INTO mcp_oauth_states (state, user_id, mcp_server_id) VALUES (?, ?, ?)')
-    .run(state, req.user.id, server.id)
-  const authUrl = new URL(server.url)
-  authUrl.searchParams.set('redirect_uri', `${config.appUrl}/api/mcp/oauth/callback`)
+  const state = `oauth_s_${crypto.randomBytes(16).toString('hex')}`
+  const codeVerifier = crypto.randomBytes(64).toString('base64url')
+  const codeChallenge = crypto.createHash('sha256').update(codeVerifier).digest('base64url')
+  const redirectUri = `${config.appUrl}/api/mcp/oauth/callback`
+  const resource = normalizeMcpResource(server.url)
+  db.prepare(`
+    INSERT INTO mcp_oauth_states (state, user_id, mcp_server_id, code_verifier, redirect_uri, resource)
+    VALUES (?, ?, ?, ?, ?, ?)
+  `).run(state, req.user.id, server.id, codeVerifier, redirectUri, resource)
+  const authUrl = deriveMcpOAuthUrl(server.url, 'authorize')
+  authUrl.searchParams.set('response_type', 'code')
+  authUrl.searchParams.set('client_id', config.mcpOAuthClientId)
+  authUrl.searchParams.set('redirect_uri', redirectUri)
+  authUrl.searchParams.set('scope', config.mcpOAuthScopes)
+  authUrl.searchParams.set('code_challenge', codeChallenge)
+  authUrl.searchParams.set('code_challenge_method', 'S256')
+  authUrl.searchParams.set('resource', resource)
   authUrl.searchParams.set('state', state)
-  authUrl.searchParams.set('mcp_server_id', server.id)
+  authUrl.searchParams.set('ui_locales', config.mcpOAuthUiLocales)
   res.json({ authUrl: authUrl.toString() })
 })
 
@@ -240,6 +252,7 @@ app.get('/api/mcp/oauth/callback', async (req, res, next) => {
       .get(storedState.mcp_server_id, storedState.user_id)
     if (!server) return res.status(404).send('MCP server not found')
 
+    const tokenPayload = await exchangeMcpOAuthCode(server, storedState, code)
     db.prepare(`
       UPDATE mcp_servers
       SET connection_status = ?, oauth_access_token = ?, oauth_refresh_token = ?,
@@ -247,9 +260,9 @@ app.get('/api/mcp/oauth/callback', async (req, res, next) => {
       WHERE id = ?
     `).run(
       'connected',
-      code,
-      null,
-      null,
+      tokenPayload.access_token || code,
+      tokenPayload.refresh_token || null,
+      tokenPayload.expires_in ? new Date(Date.now() + Number(tokenPayload.expires_in) * 1000).toISOString() : null,
       server.id
     )
     db.prepare('DELETE FROM mcp_oauth_states WHERE state = ?').run(state)
@@ -409,6 +422,44 @@ function recordTokenUsage({ userId, conversationId, messageId, usage }) {
 function writeSse(res, event, data) {
   res.write(`event: ${event}\n`)
   res.write(`data: ${JSON.stringify(data)}\n\n`)
+}
+
+async function exchangeMcpOAuthCode(server, storedState, code) {
+  const tokenUrl = deriveMcpOAuthUrl(server.url, 'token')
+  const response = await fetch(tokenUrl, {
+    method: 'POST',
+    headers: { 'content-type': 'application/x-www-form-urlencoded' },
+    body: new URLSearchParams({
+      grant_type: 'authorization_code',
+      code,
+      redirect_uri: storedState.redirect_uri,
+      client_id: config.mcpOAuthClientId,
+      code_verifier: storedState.code_verifier,
+      resource: storedState.resource
+    })
+  })
+  if (!response.ok) {
+    const detail = await response.text().catch(() => '')
+    console.error('MCP OAuth token exchange failed', response.status, detail)
+    throw new Error('MCP_OAUTH_TOKEN_EXCHANGE_FAILED')
+  }
+  return response.json()
+}
+
+function deriveMcpOAuthUrl(serverUrl, endpoint) {
+  const url = new URL(serverUrl)
+  const basePath = url.pathname.replace(/\/$/, '')
+  url.pathname = `${basePath}/oauth/${endpoint}`
+  url.search = ''
+  url.hash = ''
+  return url
+}
+
+function normalizeMcpResource(serverUrl) {
+  const url = new URL(serverUrl)
+  url.search = ''
+  url.hash = ''
+  return url.toString().replace(/\/$/, '')
 }
 
 function normalizeMcpServer(server) {

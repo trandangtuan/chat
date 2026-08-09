@@ -74,6 +74,9 @@ db.exec(`
     state TEXT PRIMARY KEY,
     user_id TEXT NOT NULL REFERENCES users(id) ON DELETE CASCADE,
     mcp_server_id TEXT NOT NULL REFERENCES mcp_servers(id) ON DELETE CASCADE,
+    code_verifier TEXT,
+    redirect_uri TEXT,
+    resource TEXT,
     created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP
   );
 
@@ -141,6 +144,9 @@ ensureColumn('mcp_servers', 'oauth_scope', 'TEXT')
 ensureColumn('mcp_servers', 'oauth_access_token', 'TEXT')
 ensureColumn('mcp_servers', 'oauth_refresh_token', 'TEXT')
 ensureColumn('mcp_servers', 'oauth_expires_at', 'TEXT')
+ensureColumn('mcp_oauth_states', 'code_verifier', 'TEXT')
+ensureColumn('mcp_oauth_states', 'redirect_uri', 'TEXT')
+ensureColumn('mcp_oauth_states', 'resource', 'TEXT')
 
 export function upsertUser(user) {
   db.prepare(`

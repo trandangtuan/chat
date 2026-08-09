@@ -4,6 +4,7 @@
 
 - Add MCP server list and New Plugin connection flow in Settings.
 - Add browser-based MCP server connection flow for OAuth or Mixed authentication.
+- Generate MCP OAuth Authorization Code + PKCE URLs from the MCP Server URL.
 - Add delete action for user MCP servers.
 - Add per-user Rules for durable assistant behavior instructions.
 - Add per-user Memory for persistent user/project context.

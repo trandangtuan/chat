@@ -11,6 +11,9 @@ services:
       - OAUTH_CLIENT_ID=${OAUTH_CLIENT_ID:-chat-ai}
       - OAUTH_CLIENT_SECRET=${OAUTH_CLIENT_SECRET:?set OAUTH_CLIENT_SECRET in chat/.env}
       - OAUTH_REDIRECT_URI=${OAUTH_REDIRECT_URI:-https://chat.tdshift.info/auth/callback}
+      - MCP_OAUTH_CLIENT_ID=${MCP_OAUTH_CLIENT_ID:-chat-ai}
+      - MCP_OAUTH_SCOPES=${MCP_OAUTH_SCOPES:-mcp mcp:read mcp:write}
+      - MCP_OAUTH_UI_LOCALES=${MCP_OAUTH_UI_LOCALES:-en-US}
       - SESSION_SECRET=${SESSION_SECRET:?set SESSION_SECRET in chat/.env}
       - DATABASE_PATH=/data/chat.db
       - OPENROUTER_API_KEY=${OPENROUTER_API_KEY:-}
