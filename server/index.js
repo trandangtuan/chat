@@ -9,6 +9,7 @@ import { config } from './config.js'
 import { db } from './db.js'
 import { authRoutes, requireUser } from './auth.js'
 import { generateAssistantReply, streamAssistantReply } from './ai.js'
+import { listMcpTools, refreshMcpToolsForServer } from './mcp.js'
 
 const app = express()
 
@@ -236,6 +237,15 @@ app.post('/api/mcp-servers/:id/connect', requireUser, (req, res) => {
   res.json({ authUrl: authUrl.toString() })
 })
 
+app.post('/api/mcp-servers/:id/tools/refresh', requireUser, async (req, res, next) => {
+  try {
+    const tools = await refreshMcpToolsForServer(req.user.id, req.params.id)
+    res.json({ tools })
+  } catch (error) {
+    next(error)
+  }
+})
+
 app.delete('/api/mcp-servers/:id', requireUser, (req, res) => {
   const result = db.prepare('DELETE FROM mcp_servers WHERE id = ? AND user_id = ?').run(req.params.id, req.user.id)
   if (result.changes === 0) return res.status(404).json({ error: 'MCP_SERVER_NOT_FOUND' })
@@ -266,6 +276,9 @@ app.get('/api/mcp/oauth/callback', async (req, res, next) => {
       server.id
     )
     db.prepare('DELETE FROM mcp_oauth_states WHERE state = ?').run(state)
+    await refreshMcpToolsForServer(storedState.user_id, server.id).catch((error) => {
+      console.error('MCP tools refresh failed after OAuth callback', error)
+    })
     res.redirect(303, config.appUrl)
   } catch (error) {
     next(error)
@@ -387,7 +400,7 @@ function listMemories(userId) {
 
 function listMcpServers(userId) {
   return db.prepare(`
-    SELECT id, name, description, icon_url, connection_type, auth_type,
+    SELECT id, user_id, name, description, icon_url, connection_type, auth_type,
            connection_status, transport, command, url, env_json, enabled, created_at, updated_at
     FROM mcp_servers
     WHERE user_id = ?
@@ -474,6 +487,7 @@ function normalizeMcpServer(server) {
     transport: server.transport,
     command: server.command,
     url: server.url,
+    tools: listMcpTools(server.user_id, server.id),
     env: JSON.parse(server.env_json || '{}'),
     enabled: Boolean(server.enabled),
     created_at: server.created_at,

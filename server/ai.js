@@ -1,4 +1,5 @@
 import { config } from './config.js'
+import { buildOpenRouterTools, executeOpenRouterTool } from './mcp.js'
 
 export async function generateAssistantReply({ user, messages, skills, mcpServers, rules, memories }) {
   const request = buildChatRequest({ user, messages, skills, mcpServers, rules, memories })
@@ -17,7 +18,7 @@ export async function generateAssistantReply({ user, messages, skills, mcpServer
     }
   }
 
-  const completion = await createOpenRouterCompletion(request, false)
+  const completion = await createOpenRouterCompletion(request, false, user.id)
   return {
     content: completion.choices?.[0]?.message?.content || 'Mình chưa tạo được câu trả lời.',
     usage: normalizeUsage(completion.usage)
@@ -40,6 +41,14 @@ export async function streamAssistantReply({ user, messages, skills, mcpServers,
         raw: {}
       }
     }
+  }
+
+  const tools = buildOpenRouterTools(user.id)
+  if (tools.length) {
+    const completion = await createOpenRouterCompletion(request, false, user.id)
+    const content = completion.choices?.[0]?.message?.content || 'Mình chưa tạo được câu trả lời.'
+    await onDelta(content)
+    return { content, usage: normalizeUsage(completion.usage) }
   }
 
   const response = await createOpenRouterStream(request)
@@ -112,7 +121,8 @@ function buildLocalReply({ enabledSkills, enabledMcp, enabledRules, enabledMemor
   ].join(' ')
 }
 
-async function createOpenRouterCompletion(request, stream) {
+async function createOpenRouterCompletion(request, stream, userId) {
+  const tools = userId ? buildOpenRouterTools(userId) : []
   const response = await fetch('https://openrouter.ai/api/v1/chat/completions', {
     method: 'POST',
     headers: openRouterHeaders(),
@@ -120,7 +130,8 @@ async function createOpenRouterCompletion(request, stream) {
       model: config.openrouterModel,
       messages: request.messages,
       temperature: 0.7,
-      stream
+      stream,
+      ...(tools.length ? { tools, tool_choice: 'auto' } : {})
     })
   })
 
@@ -130,7 +141,33 @@ async function createOpenRouterCompletion(request, stream) {
     throw new Error('OPENROUTER_REQUEST_FAILED')
   }
 
-  return response.json()
+  const completion = await response.json()
+  const message = completion.choices?.[0]?.message
+  if (!message?.tool_calls?.length || !userId) return completion
+
+  const toolMessages = []
+  for (const toolCall of message.tool_calls) {
+    const content = await executeOpenRouterTool(userId, toolCall)
+    toolMessages.push({ role: 'tool', tool_call_id: toolCall.id, content })
+  }
+
+  const finalResponse = await fetch('https://openrouter.ai/api/v1/chat/completions', {
+    method: 'POST',
+    headers: openRouterHeaders(),
+    body: JSON.stringify({
+      model: config.openrouterModel,
+      messages: [...request.messages, message, ...toolMessages],
+      temperature: 0.7
+    })
+  })
+  if (!finalResponse.ok) {
+    const detail = await finalResponse.text().catch(() => '')
+    console.error('OpenRouter final tool response failed', finalResponse.status, detail)
+    throw new Error('OPENROUTER_REQUEST_FAILED')
+  }
+  const finalCompletion = await finalResponse.json()
+  finalCompletion.usage = mergeUsage(completion.usage, finalCompletion.usage)
+  return finalCompletion
 }
 
 async function createOpenRouterStream(request) {
@@ -174,5 +211,13 @@ function normalizeUsage(usage = {}) {
     completionTokens,
     totalTokens: Number(usage.total_tokens || promptTokens + completionTokens),
     raw: usage
+  }
+}
+
+function mergeUsage(first = {}, second = {}) {
+  return {
+    prompt_tokens: Number(first.prompt_tokens || 0) + Number(second.prompt_tokens || 0),
+    completion_tokens: Number(first.completion_tokens || 0) + Number(second.completion_tokens || 0),
+    total_tokens: Number(first.total_tokens || 0) + Number(second.total_tokens || 0)
   }
 }

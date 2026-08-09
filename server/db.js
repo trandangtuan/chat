@@ -80,6 +80,18 @@ db.exec(`
     created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP
   );
 
+  CREATE TABLE IF NOT EXISTS mcp_tools (
+    id TEXT PRIMARY KEY,
+    user_id TEXT NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+    mcp_server_id TEXT NOT NULL REFERENCES mcp_servers(id) ON DELETE CASCADE,
+    name TEXT NOT NULL,
+    description TEXT,
+    input_schema_json TEXT NOT NULL DEFAULT '{}',
+    created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    updated_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    UNIQUE (mcp_server_id, name)
+  );
+
   CREATE TABLE IF NOT EXISTS skills (
     id TEXT PRIMARY KEY,
     user_id TEXT NOT NULL REFERENCES users(id) ON DELETE CASCADE,
@@ -129,6 +141,9 @@ db.exec(`
 
   CREATE INDEX IF NOT EXISTS idx_token_usage_conversation
     ON token_usage (conversation_id);
+
+  CREATE INDEX IF NOT EXISTS idx_mcp_tools_server
+    ON mcp_tools (mcp_server_id);
 `)
 
 ensureColumn('mcp_servers', 'description', 'TEXT')

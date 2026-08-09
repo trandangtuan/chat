@@ -24,6 +24,7 @@ export function SettingsPanel({
   onAddMcpServer,
   onConnectMcpServer,
   onDeleteMcpServer,
+  onRefreshMcpTools,
   onAddSkill,
   onAddRule,
   onAddMemory
@@ -52,7 +53,7 @@ export function SettingsPanel({
           onBack={() => setMcpView('list')}
         />
       ) : (
-        <McpServerList servers={mcpServers} onAdd={() => setMcpView('add')} onConnect={onConnectMcpServer} onDelete={onDeleteMcpServer} />
+        <McpServerList servers={mcpServers} onAdd={() => setMcpView('add')} onConnect={onConnectMcpServer} onDelete={onDeleteMcpServer} onRefreshTools={onRefreshMcpTools} />
       )}
 
       <section>
@@ -97,7 +98,7 @@ function SettingItemList({ items, emptyText, titleKey = 'title', contentKey }) {
   )
 }
 
-function McpServerList({ servers, onAdd, onConnect, onDelete }) {
+function McpServerList({ servers, onAdd, onConnect, onDelete, onRefreshTools }) {
   return (
     <section className="mcp-list-panel">
       <div className="section-header">
@@ -105,7 +106,7 @@ function McpServerList({ servers, onAdd, onConnect, onDelete }) {
         <button type="button" onClick={onAdd}><Plus size={16} /> Add</button>
       </div>
       <div className="server-list light">
-        {servers.map((server) => <McpServerItem key={server.id} server={server} onConnect={onConnect} onDelete={onDelete} />)}
+        {servers.map((server) => <McpServerItem key={server.id} server={server} onConnect={onConnect} onDelete={onDelete} onRefreshTools={onRefreshTools} />)}
         {!servers.length && (
           <div className="empty-list">
             <ServerCog size={24} />
@@ -186,8 +187,9 @@ function NewPluginForm({ mcpForm, onUpdate, onSubmit, onBack }) {
   )
 }
 
-function McpServerItem({ server, onConnect, onDelete }) {
+function McpServerItem({ server, onConnect, onDelete, onRefreshTools }) {
   const needsConnect = server.authType !== 'no_auth' && server.connectionStatus !== 'connected'
+  const tools = server.tools || []
   return (
     <article className="server-item">
       <div className="server-avatar">{server.name?.[0]?.toUpperCase() || 'M'}</div>
@@ -198,8 +200,15 @@ function McpServerItem({ server, onConnect, onDelete }) {
         {needsConnect && !server.url && <small className="server-warning">Missing server URL</small>}
         <div className="server-actions">
           {needsConnect && <button className="connect-server" type="button" onClick={() => onConnect(server.id)}>Connect</button>}
+          {server.connectionStatus === 'connected' && <button className="refresh-tools" type="button" onClick={() => onRefreshTools(server.id)}>Refresh tools</button>}
           <button className="delete-server" type="button" onClick={() => onDelete(server.id)} aria-label={`Delete ${server.name}`}><Trash2 size={14} /> Delete</button>
         </div>
+        {server.connectionStatus === 'connected' && (
+          <div className="tool-list">
+            {tools.map((tool) => <span key={tool.id || tool.name} title={tool.description || tool.name}>{tool.name}</span>)}
+            {!tools.length && <small>No tools loaded yet</small>}
+          </div>
+        )}
       </div>
     </article>
   )

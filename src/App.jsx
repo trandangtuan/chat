@@ -160,6 +160,16 @@ function App() {
     setMcpServers((current) => current.filter((server) => server.id !== serverId))
   }
 
+  async function refreshMcpTools(serverId) {
+    setSettingsError('')
+    try {
+      const data = await api.post(`/api/mcp-servers/${serverId}/tools/refresh`, {})
+      setMcpServers((current) => current.map((server) => server.id === serverId ? { ...server, tools: data.tools } : server))
+    } catch {
+      setSettingsError('Could not load tools from this MCP server.')
+    }
+  }
+
   async function addSkill(event) {
     event.preventDefault()
     if (!skillName.trim() || !skillInstructions.trim()) return
@@ -243,6 +253,7 @@ function App() {
         onAddMcpServer={addMcpServer}
         onConnectMcpServer={connectMcpServer}
         onDeleteMcpServer={deleteMcpServer}
+        onRefreshMcpTools={refreshMcpTools}
         onAddSkill={addSkill}
         onAddRule={addRule}
         onAddMemory={addMemory}

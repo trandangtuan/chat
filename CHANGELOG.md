@@ -6,6 +6,7 @@
 - Add browser-based MCP server connection flow for OAuth or Mixed authentication.
 - Generate MCP OAuth Authorization Code + PKCE URLs from the MCP Server URL.
 - Add delete action for user MCP servers.
+- Display tools exposed by connected MCP servers and allow OpenRouter to call them.
 - Add per-user Rules for durable assistant behavior instructions.
 - Add per-user Memory for persistent user/project context.
 - Include enabled rules, memories, skills, and MCP server metadata in the server-side AI system prompt.
