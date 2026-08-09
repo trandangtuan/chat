@@ -1,11 +1,12 @@
 import React, { useState } from 'react'
-import { AlertTriangle, ArrowLeft, Boxes, Brain, ListChecks, Plus, ServerCog } from 'lucide-react'
+import { AlertTriangle, ArrowLeft, Boxes, Brain, ListChecks, Plus, ServerCog, Trash2 } from 'lucide-react'
 
 export function SettingsPanel({
   mcpServers,
   skills,
   rules,
   memories,
+  settingsError,
   mcpForm,
   skillName,
   skillInstructions,
@@ -22,6 +23,7 @@ export function SettingsPanel({
   onMemoryContentChange,
   onAddMcpServer,
   onConnectMcpServer,
+  onDeleteMcpServer,
   onAddSkill,
   onAddRule,
   onAddMemory
@@ -41,6 +43,7 @@ export function SettingsPanel({
 
   return (
     <aside className="settings-panel">
+      {settingsError && <div className="settings-error">{settingsError}</div>}
       {mcpView === 'add' ? (
         <NewPluginForm
           mcpForm={mcpForm}
@@ -49,7 +52,7 @@ export function SettingsPanel({
           onBack={() => setMcpView('list')}
         />
       ) : (
-        <McpServerList servers={mcpServers} onAdd={() => setMcpView('add')} onConnect={onConnectMcpServer} />
+        <McpServerList servers={mcpServers} onAdd={() => setMcpView('add')} onConnect={onConnectMcpServer} onDelete={onDeleteMcpServer} />
       )}
 
       <section>
@@ -94,7 +97,7 @@ function SettingItemList({ items, emptyText, titleKey = 'title', contentKey }) {
   )
 }
 
-function McpServerList({ servers, onAdd, onConnect }) {
+function McpServerList({ servers, onAdd, onConnect, onDelete }) {
   return (
     <section className="mcp-list-panel">
       <div className="section-header">
@@ -102,7 +105,7 @@ function McpServerList({ servers, onAdd, onConnect }) {
         <button type="button" onClick={onAdd}><Plus size={16} /> Add</button>
       </div>
       <div className="server-list light">
-        {servers.map((server) => <McpServerItem key={server.id} server={server} onConnect={onConnect} />)}
+        {servers.map((server) => <McpServerItem key={server.id} server={server} onConnect={onConnect} onDelete={onDelete} />)}
         {!servers.length && (
           <div className="empty-list">
             <ServerCog size={24} />
@@ -165,26 +168,7 @@ function NewPluginForm({ mcpForm, onUpdate, onSubmit, onBack }) {
 
         {mcpForm.authType !== 'no_auth' && (
           <div className="oauth-fields">
-            <label className="field-label">
-              OAuth authorize URL
-              <input value={mcpForm.oauthAuthorizeUrl} onChange={(event) => onUpdate({ oauthAuthorizeUrl: event.target.value })} placeholder="https://provider.example.com/oauth/authorize" />
-            </label>
-            <label className="field-label">
-              OAuth token URL <span>(optional)</span>
-              <input value={mcpForm.oauthTokenUrl} onChange={(event) => onUpdate({ oauthTokenUrl: event.target.value })} placeholder="https://provider.example.com/oauth/token" />
-            </label>
-            <label className="field-label">
-              OAuth client ID
-              <input value={mcpForm.oauthClientId} onChange={(event) => onUpdate({ oauthClientId: event.target.value })} placeholder="client-id" />
-            </label>
-            <label className="field-label">
-              OAuth client secret <span>(optional)</span>
-              <input value={mcpForm.oauthClientSecret} onChange={(event) => onUpdate({ oauthClientSecret: event.target.value })} placeholder="Stored only on the server" type="password" />
-            </label>
-            <label className="field-label">
-              OAuth scopes <span>(optional)</span>
-              <input value={mcpForm.oauthScope} onChange={(event) => onUpdate({ oauthScope: event.target.value })} placeholder="openid profile mcp:tools" />
-            </label>
+            <small>After saving, click Connect. The MCP server opens in your browser so you can sign in and approve access there.</small>
           </div>
         )}
 
@@ -202,7 +186,7 @@ function NewPluginForm({ mcpForm, onUpdate, onSubmit, onBack }) {
   )
 }
 
-function McpServerItem({ server, onConnect }) {
+function McpServerItem({ server, onConnect, onDelete }) {
   const needsConnect = server.authType !== 'no_auth' && server.connectionStatus !== 'connected'
   return (
     <article className="server-item">
@@ -211,7 +195,11 @@ function McpServerItem({ server, onConnect }) {
         <strong>{server.name}</strong>
         <p>{server.description || server.url || 'Custom MCP server'}</p>
         <small>{formatAuthType(server.authType)} · {server.connectionType === 'tunnel' ? 'Tunnel' : 'Server URL'} · {server.connectionStatus === 'connected' ? 'Connected' : 'Pending'}</small>
-        {needsConnect && <button className="connect-server" type="button" onClick={() => onConnect(server.id)}>Connect</button>}
+        {needsConnect && !server.url && <small className="server-warning">Missing server URL</small>}
+        <div className="server-actions">
+          {needsConnect && <button className="connect-server" type="button" onClick={() => onConnect(server.id)}>Connect</button>}
+          <button className="delete-server" type="button" onClick={() => onDelete(server.id)} aria-label={`Delete ${server.name}`}><Trash2 size={14} /> Delete</button>
+        </div>
       </div>
     </article>
   )

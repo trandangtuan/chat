@@ -28,6 +28,7 @@ function App() {
   const [ruleInstruction, setRuleInstruction] = useState('')
   const [memoryTitle, setMemoryTitle] = useState('')
   const [memoryContent, setMemoryContent] = useState('')
+  const [settingsError, setSettingsError] = useState('')
 
   const activeConversation = useMemo(
     () => conversations.find((conversation) => conversation.id === activeId),
@@ -114,18 +115,18 @@ function App() {
 
   async function addMcpServer(event) {
     event.preventDefault()
+    setSettingsError('')
     if (!mcpForm.name.trim()) return
+    if (mcpForm.authType !== 'no_auth' && !mcpForm.url.trim()) {
+      setSettingsError('OAuth/Mixed MCP servers need a server URL. Click Connect to finish sign-in in the browser.')
+      return
+    }
     const data = await api.post('/api/mcp-servers', {
       name: mcpForm.name.trim(),
       description: mcpForm.description.trim() || null,
       iconUrl: mcpForm.iconUrl.trim() || null,
       connectionType: mcpForm.connectionType,
       authType: mcpForm.authType,
-      oauthAuthorizeUrl: mcpForm.oauthAuthorizeUrl.trim() || null,
-      oauthTokenUrl: mcpForm.oauthTokenUrl.trim() || null,
-      oauthClientId: mcpForm.oauthClientId.trim() || null,
-      oauthClientSecret: mcpForm.oauthClientSecret.trim() || null,
-      oauthScope: mcpForm.oauthScope.trim() || null,
       transport: mcpForm.connectionType === 'server_url' ? 'sse' : 'http',
       url: mcpForm.url.trim() || null,
       env: {}
@@ -135,13 +136,28 @@ function App() {
   }
 
   async function connectMcpServer(serverId) {
-    const data = await api.post(`/api/mcp-servers/${serverId}/connect`, {})
-    if (data.authUrl) {
-      window.location.href = data.authUrl
+    setSettingsError('')
+    try {
+      const data = await api.post(`/api/mcp-servers/${serverId}/connect`, {})
+      if (data.authUrl) {
+        window.location.href = data.authUrl
+        return
+      }
+      const refreshed = await api.get('/api/mcp-servers')
+      setMcpServers(refreshed.mcpServers)
+    } catch {
+      setSettingsError('This MCP server is missing a server URL. Create it again with the MCP server URL.')
+    }
+  }
+
+  async function deleteMcpServer(serverId) {
+    setSettingsError('')
+    const response = await fetch(`/api/mcp-servers/${serverId}`, { method: 'DELETE', credentials: 'include' })
+    if (!response.ok) {
+      setSettingsError('Could not delete this MCP server. Please try again.')
       return
     }
-    const refreshed = await api.get('/api/mcp-servers')
-    setMcpServers(refreshed.mcpServers)
+    setMcpServers((current) => current.filter((server) => server.id !== serverId))
   }
 
   async function addSkill(event) {
@@ -209,6 +225,7 @@ function App() {
         skills={skills}
         rules={rules}
         memories={memories}
+        settingsError={settingsError}
         mcpForm={mcpForm}
         skillName={skillName}
         skillInstructions={skillInstructions}
@@ -225,6 +242,7 @@ function App() {
         onMemoryContentChange={setMemoryContent}
         onAddMcpServer={addMcpServer}
         onConnectMcpServer={connectMcpServer}
+        onDeleteMcpServer={deleteMcpServer}
         onAddSkill={addSkill}
         onAddRule={addRule}
         onAddMemory={addMemory}
@@ -240,12 +258,7 @@ function createEmptyMcpForm() {
     iconUrl: '',
     connectionType: 'server_url',
     url: '',
-    authType: 'oauth',
-    oauthAuthorizeUrl: '',
-    oauthTokenUrl: '',
-    oauthClientId: '',
-    oauthClientSecret: '',
-    oauthScope: ''
+    authType: 'oauth'
   }
 }
 

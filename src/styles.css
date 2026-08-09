@@ -246,6 +246,16 @@ button { cursor: pointer; }
 
 .settings-panel section + section { margin-top: 28px; }
 .settings-panel h3 { display: flex; gap: 8px; align-items: center; margin: 0 0 12px; font-size: 15px; }
+.settings-error {
+  margin-bottom: 12px;
+  padding: 10px 12px;
+  border: 1px solid #fecaca;
+  border-radius: 8px;
+  background: #fef2f2;
+  color: #991b1b;
+  font-size: 13px;
+  line-height: 1.4;
+}
 .settings-heading {
   display: flex;
   align-items: center;
@@ -458,17 +468,40 @@ input, .setting-form textarea {
 }
 
 .server-item p { margin: 4px 0; color: #d4d4d8; font-size: 13px; }
+.server-warning {
+  margin-top: 5px;
+  color: #b45309;
+  font-weight: 700;
+}
 
-.connect-server {
-  min-height: 30px;
+.server-actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
   margin-top: 8px;
+}
+
+.connect-server, .delete-server {
+  min-height: 30px;
   border: 0;
   border-radius: 7px;
   padding: 0 10px;
-  background: var(--blue);
-  color: white;
   font-size: 12px;
   font-weight: 700;
+}
+
+.connect-server {
+  background: var(--blue);
+  color: white;
+}
+
+.delete-server {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  border: 1px solid #fecaca;
+  background: #fff5f5;
+  color: #991b1b;
 }
 
 .server-list.light .server-item {

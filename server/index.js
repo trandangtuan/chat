@@ -165,26 +165,23 @@ app.post('/api/mcp-servers', requireUser, (req, res) => {
     iconUrl: z.string().max(500).optional().nullable(),
     connectionType: z.enum(['server_url', 'tunnel']).default('server_url'),
     authType: z.enum(['oauth', 'no_auth', 'mixed']).default('oauth'),
-    oauthAuthorizeUrl: z.string().max(500).optional().nullable(),
-    oauthTokenUrl: z.string().max(500).optional().nullable(),
-    oauthClientId: z.string().max(200).optional().nullable(),
-    oauthClientSecret: z.string().max(500).optional().nullable(),
-    oauthScope: z.string().max(500).optional().nullable(),
     transport: z.enum(['stdio', 'http', 'sse']).default('sse'),
     command: z.string().max(500).optional().nullable(),
     url: z.string().max(500).optional().nullable(),
     env: z.record(z.string()).default({}),
     enabled: z.boolean().default(true)
   }).parse(req.body)
+  if (payload.authType !== 'no_auth' && !payload.url) {
+    return res.status(400).json({ error: 'MCP_SERVER_URL_REQUIRED' })
+  }
   const id = nanoid()
   const connectionStatus = payload.authType === 'no_auth' ? 'connected' : 'pending'
   db.prepare(`
     INSERT INTO mcp_servers (
       id, user_id, name, description, icon_url, connection_type, auth_type,
-      connection_status, oauth_authorize_url, oauth_token_url, oauth_client_id,
-      oauth_client_secret, oauth_scope, transport, command, url, env_json, enabled
+      connection_status, transport, command, url, env_json, enabled
     )
-    VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+    VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
   `).run(
     id,
     req.user.id,
@@ -194,11 +191,6 @@ app.post('/api/mcp-servers', requireUser, (req, res) => {
     payload.connectionType,
     payload.authType,
     connectionStatus,
-    payload.oauthAuthorizeUrl,
-    payload.oauthTokenUrl,
-    payload.oauthClientId,
-    payload.oauthClientSecret,
-    payload.oauthScope,
     payload.transport,
     payload.command,
     payload.url,
@@ -215,20 +207,27 @@ app.post('/api/mcp-servers/:id/connect', requireUser, (req, res) => {
     db.prepare('UPDATE mcp_servers SET connection_status = ?, updated_at = CURRENT_TIMESTAMP WHERE id = ?').run('connected', server.id)
     return res.json({ connected: true })
   }
-  if (!server.oauth_authorize_url || !server.oauth_client_id) {
-    return res.status(400).json({ error: 'MCP_OAUTH_NOT_CONFIGURED' })
+  if (!server.url) {
+    return res.status(400).json({
+      error: 'MCP_SERVER_URL_REQUIRED',
+      message: 'OAuth/Mixed MCP servers require a server URL.'
+    })
   }
 
   const state = crypto.randomBytes(32).toString('base64url')
   db.prepare('INSERT INTO mcp_oauth_states (state, user_id, mcp_server_id) VALUES (?, ?, ?)')
     .run(state, req.user.id, server.id)
-  const authUrl = new URL(server.oauth_authorize_url)
-  authUrl.searchParams.set('client_id', server.oauth_client_id)
+  const authUrl = new URL(server.url)
   authUrl.searchParams.set('redirect_uri', `${config.appUrl}/api/mcp/oauth/callback`)
-  authUrl.searchParams.set('response_type', 'code')
   authUrl.searchParams.set('state', state)
-  if (server.oauth_scope) authUrl.searchParams.set('scope', server.oauth_scope)
+  authUrl.searchParams.set('mcp_server_id', server.id)
   res.json({ authUrl: authUrl.toString() })
+})
+
+app.delete('/api/mcp-servers/:id', requireUser, (req, res) => {
+  const result = db.prepare('DELETE FROM mcp_servers WHERE id = ? AND user_id = ?').run(req.params.id, req.user.id)
+  if (result.changes === 0) return res.status(404).json({ error: 'MCP_SERVER_NOT_FOUND' })
+  res.json({ ok: true })
 })
 
 app.get('/api/mcp/oauth/callback', async (req, res, next) => {
@@ -241,9 +240,6 @@ app.get('/api/mcp/oauth/callback', async (req, res, next) => {
       .get(storedState.mcp_server_id, storedState.user_id)
     if (!server) return res.status(404).send('MCP server not found')
 
-    const tokenPayload = server.oauth_token_url
-      ? await exchangeMcpOAuthCode(server, code)
-      : { access_token: code, token_type: 'authorization_code' }
     db.prepare(`
       UPDATE mcp_servers
       SET connection_status = ?, oauth_access_token = ?, oauth_refresh_token = ?,
@@ -251,9 +247,9 @@ app.get('/api/mcp/oauth/callback', async (req, res, next) => {
       WHERE id = ?
     `).run(
       'connected',
-      tokenPayload.access_token || code,
-      tokenPayload.refresh_token || null,
-      tokenPayload.expires_in ? new Date(Date.now() + Number(tokenPayload.expires_in) * 1000).toISOString() : null,
+      code,
+      null,
+      null,
       server.id
     )
     db.prepare('DELETE FROM mcp_oauth_states WHERE state = ?').run(state)
@@ -379,8 +375,7 @@ function listMemories(userId) {
 function listMcpServers(userId) {
   return db.prepare(`
     SELECT id, name, description, icon_url, connection_type, auth_type,
-           connection_status, oauth_authorize_url, oauth_token_url, oauth_client_id,
-           oauth_scope, transport, command, url, env_json, enabled, created_at, updated_at
+           connection_status, transport, command, url, env_json, enabled, created_at, updated_at
     FROM mcp_servers
     WHERE user_id = ?
     ORDER BY created_at DESC
@@ -416,26 +411,6 @@ function writeSse(res, event, data) {
   res.write(`data: ${JSON.stringify(data)}\n\n`)
 }
 
-async function exchangeMcpOAuthCode(server, code) {
-  const response = await fetch(server.oauth_token_url, {
-    method: 'POST',
-    headers: { 'content-type': 'application/x-www-form-urlencoded' },
-    body: new URLSearchParams({
-      grant_type: 'authorization_code',
-      code,
-      redirect_uri: `${config.appUrl}/api/mcp/oauth/callback`,
-      client_id: server.oauth_client_id,
-      client_secret: server.oauth_client_secret || ''
-    })
-  })
-  if (!response.ok) {
-    const detail = await response.text().catch(() => '')
-    console.error('MCP OAuth token exchange failed', response.status, detail)
-    throw new Error('MCP_OAUTH_TOKEN_EXCHANGE_FAILED')
-  }
-  return response.json()
-}
-
 function normalizeMcpServer(server) {
   return {
     id: server.id,
@@ -445,10 +420,6 @@ function normalizeMcpServer(server) {
     connectionType: server.connection_type,
     authType: server.auth_type,
     connectionStatus: server.connection_status,
-    oauthAuthorizeUrl: server.oauth_authorize_url,
-    oauthTokenUrl: server.oauth_token_url,
-    oauthClientId: server.oauth_client_id,
-    oauthScope: server.oauth_scope,
     transport: server.transport,
     command: server.command,
     url: server.url,
