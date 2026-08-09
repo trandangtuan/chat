@@ -306,6 +306,15 @@ input, .setting-form textarea {
   gap: 15px;
 }
 
+.oauth-fields {
+  display: grid;
+  gap: 12px;
+  padding: 12px;
+  border: 1px solid #3f3f46;
+  border-radius: 8px;
+  background: #18181b;
+}
+
 .icon-field {
   display: grid;
   grid-template-columns: 56px 1fr;
@@ -449,6 +458,18 @@ input, .setting-form textarea {
 }
 
 .server-item p { margin: 4px 0; color: #d4d4d8; font-size: 13px; }
+
+.connect-server {
+  min-height: 30px;
+  margin-top: 8px;
+  border: 0;
+  border-radius: 7px;
+  padding: 0 10px;
+  background: var(--blue);
+  color: white;
+  font-size: 12px;
+  font-weight: 700;
+}
 
 .server-list.light .server-item {
   border-color: var(--line);

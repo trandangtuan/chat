@@ -121,12 +121,27 @@ function App() {
       iconUrl: mcpForm.iconUrl.trim() || null,
       connectionType: mcpForm.connectionType,
       authType: mcpForm.authType,
+      oauthAuthorizeUrl: mcpForm.oauthAuthorizeUrl.trim() || null,
+      oauthTokenUrl: mcpForm.oauthTokenUrl.trim() || null,
+      oauthClientId: mcpForm.oauthClientId.trim() || null,
+      oauthClientSecret: mcpForm.oauthClientSecret.trim() || null,
+      oauthScope: mcpForm.oauthScope.trim() || null,
       transport: mcpForm.connectionType === 'server_url' ? 'sse' : 'http',
       url: mcpForm.url.trim() || null,
       env: {}
     })
     setMcpServers((current) => [data.mcpServer, ...current])
     setMcpForm(createEmptyMcpForm())
+  }
+
+  async function connectMcpServer(serverId) {
+    const data = await api.post(`/api/mcp-servers/${serverId}/connect`, {})
+    if (data.authUrl) {
+      window.location.href = data.authUrl
+      return
+    }
+    const refreshed = await api.get('/api/mcp-servers')
+    setMcpServers(refreshed.mcpServers)
   }
 
   async function addSkill(event) {
@@ -209,6 +224,7 @@ function App() {
         onMemoryTitleChange={setMemoryTitle}
         onMemoryContentChange={setMemoryContent}
         onAddMcpServer={addMcpServer}
+        onConnectMcpServer={connectMcpServer}
         onAddSkill={addSkill}
         onAddRule={addRule}
         onAddMemory={addMemory}
@@ -224,7 +240,12 @@ function createEmptyMcpForm() {
     iconUrl: '',
     connectionType: 'server_url',
     url: '',
-    authType: 'oauth'
+    authType: 'oauth',
+    oauthAuthorizeUrl: '',
+    oauthTokenUrl: '',
+    oauthClientId: '',
+    oauthClientSecret: '',
+    oauthScope: ''
   }
 }
 

@@ -52,6 +52,15 @@ db.exec(`
     icon_url TEXT,
     connection_type TEXT NOT NULL DEFAULT 'server_url',
     auth_type TEXT NOT NULL DEFAULT 'oauth',
+    connection_status TEXT NOT NULL DEFAULT 'pending',
+    oauth_authorize_url TEXT,
+    oauth_token_url TEXT,
+    oauth_client_id TEXT,
+    oauth_client_secret TEXT,
+    oauth_scope TEXT,
+    oauth_access_token TEXT,
+    oauth_refresh_token TEXT,
+    oauth_expires_at TEXT,
     transport TEXT NOT NULL DEFAULT 'stdio',
     command TEXT,
     url TEXT,
@@ -59,6 +68,13 @@ db.exec(`
     enabled INTEGER NOT NULL DEFAULT 1,
     created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
     updated_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP
+  );
+
+  CREATE TABLE IF NOT EXISTS mcp_oauth_states (
+    state TEXT PRIMARY KEY,
+    user_id TEXT NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+    mcp_server_id TEXT NOT NULL REFERENCES mcp_servers(id) ON DELETE CASCADE,
+    created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP
   );
 
   CREATE TABLE IF NOT EXISTS skills (
@@ -116,6 +132,15 @@ ensureColumn('mcp_servers', 'description', 'TEXT')
 ensureColumn('mcp_servers', 'icon_url', 'TEXT')
 ensureColumn('mcp_servers', 'connection_type', "TEXT NOT NULL DEFAULT 'server_url'")
 ensureColumn('mcp_servers', 'auth_type', "TEXT NOT NULL DEFAULT 'oauth'")
+ensureColumn('mcp_servers', 'connection_status', "TEXT NOT NULL DEFAULT 'pending'")
+ensureColumn('mcp_servers', 'oauth_authorize_url', 'TEXT')
+ensureColumn('mcp_servers', 'oauth_token_url', 'TEXT')
+ensureColumn('mcp_servers', 'oauth_client_id', 'TEXT')
+ensureColumn('mcp_servers', 'oauth_client_secret', 'TEXT')
+ensureColumn('mcp_servers', 'oauth_scope', 'TEXT')
+ensureColumn('mcp_servers', 'oauth_access_token', 'TEXT')
+ensureColumn('mcp_servers', 'oauth_refresh_token', 'TEXT')
+ensureColumn('mcp_servers', 'oauth_expires_at', 'TEXT')
 
 export function upsertUser(user) {
   db.prepare(`

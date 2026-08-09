@@ -1,4 +1,5 @@
 import express from 'express'
+import crypto from 'node:crypto'
 import cors from 'cors'
 import cookieParser from 'cookie-parser'
 import helmet from 'helmet'
@@ -164,6 +165,11 @@ app.post('/api/mcp-servers', requireUser, (req, res) => {
     iconUrl: z.string().max(500).optional().nullable(),
     connectionType: z.enum(['server_url', 'tunnel']).default('server_url'),
     authType: z.enum(['oauth', 'no_auth', 'mixed']).default('oauth'),
+    oauthAuthorizeUrl: z.string().max(500).optional().nullable(),
+    oauthTokenUrl: z.string().max(500).optional().nullable(),
+    oauthClientId: z.string().max(200).optional().nullable(),
+    oauthClientSecret: z.string().max(500).optional().nullable(),
+    oauthScope: z.string().max(500).optional().nullable(),
     transport: z.enum(['stdio', 'http', 'sse']).default('sse'),
     command: z.string().max(500).optional().nullable(),
     url: z.string().max(500).optional().nullable(),
@@ -171,12 +177,14 @@ app.post('/api/mcp-servers', requireUser, (req, res) => {
     enabled: z.boolean().default(true)
   }).parse(req.body)
   const id = nanoid()
+  const connectionStatus = payload.authType === 'no_auth' ? 'connected' : 'pending'
   db.prepare(`
     INSERT INTO mcp_servers (
       id, user_id, name, description, icon_url, connection_type, auth_type,
-      transport, command, url, env_json, enabled
+      connection_status, oauth_authorize_url, oauth_token_url, oauth_client_id,
+      oauth_client_secret, oauth_scope, transport, command, url, env_json, enabled
     )
-    VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+    VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
   `).run(
     id,
     req.user.id,
@@ -185,13 +193,74 @@ app.post('/api/mcp-servers', requireUser, (req, res) => {
     payload.iconUrl,
     payload.connectionType,
     payload.authType,
+    connectionStatus,
+    payload.oauthAuthorizeUrl,
+    payload.oauthTokenUrl,
+    payload.oauthClientId,
+    payload.oauthClientSecret,
+    payload.oauthScope,
     payload.transport,
     payload.command,
     payload.url,
     JSON.stringify(payload.env),
     payload.enabled ? 1 : 0
   )
-  res.status(201).json({ mcpServer: db.prepare('SELECT * FROM mcp_servers WHERE id = ?').get(id) })
+  res.status(201).json({ mcpServer: normalizeMcpServer(db.prepare('SELECT * FROM mcp_servers WHERE id = ?').get(id)) })
+})
+
+app.post('/api/mcp-servers/:id/connect', requireUser, (req, res) => {
+  const server = db.prepare('SELECT * FROM mcp_servers WHERE id = ? AND user_id = ?').get(req.params.id, req.user.id)
+  if (!server) return res.status(404).json({ error: 'MCP_SERVER_NOT_FOUND' })
+  if (server.auth_type === 'no_auth') {
+    db.prepare('UPDATE mcp_servers SET connection_status = ?, updated_at = CURRENT_TIMESTAMP WHERE id = ?').run('connected', server.id)
+    return res.json({ connected: true })
+  }
+  if (!server.oauth_authorize_url || !server.oauth_client_id) {
+    return res.status(400).json({ error: 'MCP_OAUTH_NOT_CONFIGURED' })
+  }
+
+  const state = crypto.randomBytes(32).toString('base64url')
+  db.prepare('INSERT INTO mcp_oauth_states (state, user_id, mcp_server_id) VALUES (?, ?, ?)')
+    .run(state, req.user.id, server.id)
+  const authUrl = new URL(server.oauth_authorize_url)
+  authUrl.searchParams.set('client_id', server.oauth_client_id)
+  authUrl.searchParams.set('redirect_uri', `${config.appUrl}/api/mcp/oauth/callback`)
+  authUrl.searchParams.set('response_type', 'code')
+  authUrl.searchParams.set('state', state)
+  if (server.oauth_scope) authUrl.searchParams.set('scope', server.oauth_scope)
+  res.json({ authUrl: authUrl.toString() })
+})
+
+app.get('/api/mcp/oauth/callback', async (req, res, next) => {
+  try {
+    const state = String(req.query.state || '')
+    const code = String(req.query.code || '')
+    const storedState = db.prepare('SELECT * FROM mcp_oauth_states WHERE state = ?').get(state)
+    if (!storedState || !code) return res.status(400).send('Invalid MCP OAuth callback')
+    const server = db.prepare('SELECT * FROM mcp_servers WHERE id = ? AND user_id = ?')
+      .get(storedState.mcp_server_id, storedState.user_id)
+    if (!server) return res.status(404).send('MCP server not found')
+
+    const tokenPayload = server.oauth_token_url
+      ? await exchangeMcpOAuthCode(server, code)
+      : { access_token: code, token_type: 'authorization_code' }
+    db.prepare(`
+      UPDATE mcp_servers
+      SET connection_status = ?, oauth_access_token = ?, oauth_refresh_token = ?,
+          oauth_expires_at = ?, updated_at = CURRENT_TIMESTAMP
+      WHERE id = ?
+    `).run(
+      'connected',
+      tokenPayload.access_token || code,
+      tokenPayload.refresh_token || null,
+      tokenPayload.expires_in ? new Date(Date.now() + Number(tokenPayload.expires_in) * 1000).toISOString() : null,
+      server.id
+    )
+    db.prepare('DELETE FROM mcp_oauth_states WHERE state = ?').run(state)
+    res.redirect(303, config.appUrl)
+  } catch (error) {
+    next(error)
+  }
 })
 
 app.get('/api/skills', requireUser, (req, res) => {
@@ -310,24 +379,14 @@ function listMemories(userId) {
 function listMcpServers(userId) {
   return db.prepare(`
     SELECT id, name, description, icon_url, connection_type, auth_type,
-           transport, command, url, env_json, enabled, created_at, updated_at
+           connection_status, oauth_authorize_url, oauth_token_url, oauth_client_id,
+           oauth_scope, transport, command, url, env_json, enabled, created_at, updated_at
     FROM mcp_servers
     WHERE user_id = ?
     ORDER BY created_at DESC
   `)
     .all(userId)
-    .map((server) => ({
-      ...server,
-      iconUrl: server.icon_url,
-      connectionType: server.connection_type,
-      authType: server.auth_type,
-      env: JSON.parse(server.env_json || '{}'),
-      enabled: Boolean(server.enabled),
-      icon_url: undefined,
-      connection_type: undefined,
-      auth_type: undefined,
-      env_json: undefined
-    }))
+    .map(normalizeMcpServer)
 }
 
 function recordTokenUsage({ userId, conversationId, messageId, usage }) {
@@ -355,4 +414,47 @@ function recordTokenUsage({ userId, conversationId, messageId, usage }) {
 function writeSse(res, event, data) {
   res.write(`event: ${event}\n`)
   res.write(`data: ${JSON.stringify(data)}\n\n`)
+}
+
+async function exchangeMcpOAuthCode(server, code) {
+  const response = await fetch(server.oauth_token_url, {
+    method: 'POST',
+    headers: { 'content-type': 'application/x-www-form-urlencoded' },
+    body: new URLSearchParams({
+      grant_type: 'authorization_code',
+      code,
+      redirect_uri: `${config.appUrl}/api/mcp/oauth/callback`,
+      client_id: server.oauth_client_id,
+      client_secret: server.oauth_client_secret || ''
+    })
+  })
+  if (!response.ok) {
+    const detail = await response.text().catch(() => '')
+    console.error('MCP OAuth token exchange failed', response.status, detail)
+    throw new Error('MCP_OAUTH_TOKEN_EXCHANGE_FAILED')
+  }
+  return response.json()
+}
+
+function normalizeMcpServer(server) {
+  return {
+    id: server.id,
+    name: server.name,
+    description: server.description,
+    iconUrl: server.icon_url,
+    connectionType: server.connection_type,
+    authType: server.auth_type,
+    connectionStatus: server.connection_status,
+    oauthAuthorizeUrl: server.oauth_authorize_url,
+    oauthTokenUrl: server.oauth_token_url,
+    oauthClientId: server.oauth_client_id,
+    oauthScope: server.oauth_scope,
+    transport: server.transport,
+    command: server.command,
+    url: server.url,
+    env: JSON.parse(server.env_json || '{}'),
+    enabled: Boolean(server.enabled),
+    created_at: server.created_at,
+    updated_at: server.updated_at
+  }
 }

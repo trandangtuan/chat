@@ -21,6 +21,7 @@ export function SettingsPanel({
   onMemoryTitleChange,
   onMemoryContentChange,
   onAddMcpServer,
+  onConnectMcpServer,
   onAddSkill,
   onAddRule,
   onAddMemory
@@ -48,7 +49,7 @@ export function SettingsPanel({
           onBack={() => setMcpView('list')}
         />
       ) : (
-        <McpServerList servers={mcpServers} onAdd={() => setMcpView('add')} />
+        <McpServerList servers={mcpServers} onAdd={() => setMcpView('add')} onConnect={onConnectMcpServer} />
       )}
 
       <section>
@@ -93,7 +94,7 @@ function SettingItemList({ items, emptyText, titleKey = 'title', contentKey }) {
   )
 }
 
-function McpServerList({ servers, onAdd }) {
+function McpServerList({ servers, onAdd, onConnect }) {
   return (
     <section className="mcp-list-panel">
       <div className="section-header">
@@ -101,7 +102,7 @@ function McpServerList({ servers, onAdd }) {
         <button type="button" onClick={onAdd}><Plus size={16} /> Add</button>
       </div>
       <div className="server-list light">
-        {servers.map((server) => <McpServerItem key={server.id} server={server} />)}
+        {servers.map((server) => <McpServerItem key={server.id} server={server} onConnect={onConnect} />)}
         {!servers.length && (
           <div className="empty-list">
             <ServerCog size={24} />
@@ -162,6 +163,31 @@ function NewPluginForm({ mcpForm, onUpdate, onSubmit, onBack }) {
           </select>
         </label>
 
+        {mcpForm.authType !== 'no_auth' && (
+          <div className="oauth-fields">
+            <label className="field-label">
+              OAuth authorize URL
+              <input value={mcpForm.oauthAuthorizeUrl} onChange={(event) => onUpdate({ oauthAuthorizeUrl: event.target.value })} placeholder="https://provider.example.com/oauth/authorize" />
+            </label>
+            <label className="field-label">
+              OAuth token URL <span>(optional)</span>
+              <input value={mcpForm.oauthTokenUrl} onChange={(event) => onUpdate({ oauthTokenUrl: event.target.value })} placeholder="https://provider.example.com/oauth/token" />
+            </label>
+            <label className="field-label">
+              OAuth client ID
+              <input value={mcpForm.oauthClientId} onChange={(event) => onUpdate({ oauthClientId: event.target.value })} placeholder="client-id" />
+            </label>
+            <label className="field-label">
+              OAuth client secret <span>(optional)</span>
+              <input value={mcpForm.oauthClientSecret} onChange={(event) => onUpdate({ oauthClientSecret: event.target.value })} placeholder="Stored only on the server" type="password" />
+            </label>
+            <label className="field-label">
+              OAuth scopes <span>(optional)</span>
+              <input value={mcpForm.oauthScope} onChange={(event) => onUpdate({ oauthScope: event.target.value })} placeholder="openid profile mcp:tools" />
+            </label>
+          </div>
+        )}
+
         <div className="risk-note">
           <AlertTriangle size={17} />
           <span>Custom MCP servers introduce risk. <a href="https://modelcontextprotocol.io" target="_blank" rel="noreferrer">Learn more</a></span>
@@ -176,14 +202,16 @@ function NewPluginForm({ mcpForm, onUpdate, onSubmit, onBack }) {
   )
 }
 
-function McpServerItem({ server }) {
+function McpServerItem({ server, onConnect }) {
+  const needsConnect = server.authType !== 'no_auth' && server.connectionStatus !== 'connected'
   return (
     <article className="server-item">
       <div className="server-avatar">{server.name?.[0]?.toUpperCase() || 'M'}</div>
       <div>
         <strong>{server.name}</strong>
         <p>{server.description || server.url || 'Custom MCP server'}</p>
-        <small>{formatAuthType(server.authType)} · {server.connectionType === 'tunnel' ? 'Tunnel' : 'Server URL'}</small>
+        <small>{formatAuthType(server.authType)} · {server.connectionType === 'tunnel' ? 'Tunnel' : 'Server URL'} · {server.connectionStatus === 'connected' ? 'Connected' : 'Pending'}</small>
+        {needsConnect && <button className="connect-server" type="button" onClick={() => onConnect(server.id)}>Connect</button>}
       </div>
     </article>
   )
