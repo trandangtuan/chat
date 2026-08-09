@@ -21,6 +21,7 @@ function App() {
   const [skills, setSkills] = useState([])
   const [rules, setRules] = useState([])
   const [memories, setMemories] = useState([])
+  const [tokenUsage, setTokenUsage] = useState({ usage: [], summary: [] })
   const [mcpForm, setMcpForm] = useState(createEmptyMcpForm())
   const [skillName, setSkillName] = useState('')
   const [skillInstructions, setSkillInstructions] = useState('')
@@ -50,12 +51,13 @@ function App() {
     try {
       const identity = await api.get('/api/me')
       setUser(identity.user)
-      const [conversationData, mcpData, skillData, ruleData, memoryData] = await Promise.all([
+      const [conversationData, mcpData, skillData, ruleData, memoryData, tokenData] = await Promise.all([
         api.get('/api/conversations'),
         api.get('/api/mcp-servers'),
         api.get('/api/skills'),
         api.get('/api/rules'),
-        api.get('/api/memories')
+        api.get('/api/memories'),
+        api.get('/api/usage/token-history?limit=50')
       ])
       setConversations(conversationData.conversations)
       setActiveId(conversationData.conversations[0]?.id || null)
@@ -63,6 +65,7 @@ function App() {
       setSkills(skillData.skills)
       setRules(ruleData.rules)
       setMemories(memoryData.memories)
+      setTokenUsage(tokenData)
     } catch {
       setUser(null)
     } finally {
@@ -104,6 +107,7 @@ function App() {
       }))
       const refreshed = await api.get('/api/conversations')
       setConversations(refreshed.conversations)
+      refreshTokenUsage()
     } catch {
       setMessages((current) => current.map((message) => message.id === assistantId
         ? { ...message, content: 'Không thể stream câu trả lời. Vui lòng thử lại.', streaming: false }
@@ -167,6 +171,15 @@ function App() {
       setMcpServers((current) => current.map((server) => server.id === serverId ? { ...server, tools: data.tools } : server))
     } catch {
       setSettingsError('Could not load tools from this MCP server.')
+    }
+  }
+
+  async function refreshTokenUsage() {
+    try {
+      const data = await api.get('/api/usage/token-history?limit=50')
+      setTokenUsage(data)
+    } catch {
+      setTokenUsage({ usage: [], summary: [] })
     }
   }
 
@@ -235,6 +248,7 @@ function App() {
         skills={skills}
         rules={rules}
         memories={memories}
+        tokenUsage={tokenUsage}
         settingsError={settingsError}
         mcpForm={mcpForm}
         skillName={skillName}

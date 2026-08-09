@@ -1,11 +1,12 @@
 import React, { useState } from 'react'
-import { AlertTriangle, ArrowLeft, Boxes, Brain, ListChecks, Plus, ServerCog, Trash2 } from 'lucide-react'
+import { AlertTriangle, ArrowLeft, Boxes, Brain, Coins, ListChecks, Plus, ServerCog, Trash2 } from 'lucide-react'
 
 export function SettingsPanel({
   mcpServers,
   skills,
   rules,
   memories,
+  tokenUsage,
   settingsError,
   mcpForm,
   skillName,
@@ -57,6 +58,11 @@ export function SettingsPanel({
       )}
 
       <section>
+        <h3><Coins size={17} /> Token usage</h3>
+        <TokenUsagePanel tokenUsage={tokenUsage} />
+      </section>
+
+      <section>
         <h3><ListChecks size={17} /> Rules</h3>
         <form onSubmit={onAddRule} className="setting-form">
           <input value={ruleTitle} onChange={(event) => onRuleTitleChange(event.target.value)} placeholder="Rule name" />
@@ -86,6 +92,55 @@ export function SettingsPanel({
         <SettingItemList items={skills} emptyText="No personal skills yet" titleKey="name" contentKey="instructions" />
       </section>
     </aside>
+  )
+}
+
+function TokenUsagePanel({ tokenUsage }) {
+  const summary = tokenUsage?.summary || []
+  const usage = tokenUsage?.usage || []
+  const totalTokens = summary.reduce((total, item) => total + Number(item.total_tokens || 0), 0)
+  const totalRequests = summary.reduce((total, item) => total + Number(item.request_count || 0), 0)
+
+  return (
+    <div className="token-usage-panel">
+      <div className="token-total">
+        <div>
+          <strong>{formatNumber(totalTokens)}</strong>
+          <small>Total tokens</small>
+        </div>
+        <div>
+          <strong>{formatNumber(totalRequests)}</strong>
+          <small>Requests</small>
+        </div>
+      </div>
+
+      <div className="token-summary-list">
+        {summary.map((item) => (
+          <article key={`${item.provider}-${item.model}`}>
+            <strong>{item.model}</strong>
+            <small>{item.provider} · {formatNumber(item.request_count)} requests</small>
+            <span>{formatNumber(item.total_tokens)} tokens</span>
+          </article>
+        ))}
+      </div>
+
+      <div className="token-history-list">
+        {usage.map((item) => (
+          <article key={item.id}>
+            <div>
+              <strong>{item.model}</strong>
+              <small>{formatDateTime(item.created_at)}</small>
+            </div>
+            <div className="token-breakdown">
+              <span>P {formatNumber(item.prompt_tokens)}</span>
+              <span>C {formatNumber(item.completion_tokens)}</span>
+              <strong>{formatNumber(item.total_tokens)}</strong>
+            </div>
+          </article>
+        ))}
+        {!usage.length && <small>No token usage yet</small>}
+      </div>
+    </div>
   )
 }
 
@@ -218,4 +273,16 @@ function formatAuthType(authType) {
   if (authType === 'no_auth') return 'No Auth'
   if (authType === 'mixed') return 'Mixed'
   return 'OAuth'
+}
+
+function formatNumber(value) {
+  return new Intl.NumberFormat('en-US').format(Number(value || 0))
+}
+
+function formatDateTime(value) {
+  if (!value) return ''
+  return new Intl.DateTimeFormat('vi-VN', {
+    dateStyle: 'short',
+    timeStyle: 'short'
+  }).format(new Date(value))
 }
