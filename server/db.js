@@ -48,6 +48,10 @@ db.exec(`
     id TEXT PRIMARY KEY,
     user_id TEXT NOT NULL REFERENCES users(id) ON DELETE CASCADE,
     name TEXT NOT NULL,
+    description TEXT,
+    icon_url TEXT,
+    connection_type TEXT NOT NULL DEFAULT 'server_url',
+    auth_type TEXT NOT NULL DEFAULT 'oauth',
     transport TEXT NOT NULL DEFAULT 'stdio',
     command TEXT,
     url TEXT,
@@ -88,6 +92,11 @@ db.exec(`
     ON token_usage (conversation_id);
 `)
 
+ensureColumn('mcp_servers', 'description', 'TEXT')
+ensureColumn('mcp_servers', 'icon_url', 'TEXT')
+ensureColumn('mcp_servers', 'connection_type', "TEXT NOT NULL DEFAULT 'server_url'")
+ensureColumn('mcp_servers', 'auth_type', "TEXT NOT NULL DEFAULT 'oauth'")
+
 export function upsertUser(user) {
   db.prepare(`
     INSERT INTO users (id, email, name, avatar_url)
@@ -98,4 +107,9 @@ export function upsertUser(user) {
       avatar_url = excluded.avatar_url,
       updated_at = CURRENT_TIMESTAMP
   `).run(user)
+}
+
+function ensureColumn(table, column, definition) {
+  const exists = db.prepare(`PRAGMA table_info(${table})`).all().some((field) => field.name === column)
+  if (!exists) db.exec(`ALTER TABLE ${table} ADD COLUMN ${column} ${definition}`)
 }

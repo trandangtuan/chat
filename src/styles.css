@@ -246,6 +246,7 @@ button { cursor: pointer; }
 
 .settings-panel section + section { margin-top: 28px; }
 .settings-panel h3 { display: flex; gap: 8px; align-items: center; margin: 0 0 12px; font-size: 15px; }
+.settings-heading h3 { color: #f8fafc; font-size: 16px; font-weight: 600; }
 .inline-form { display: grid; grid-template-columns: 1fr 38px; gap: 8px; }
 input, .skill-form textarea {
   width: 100%;
@@ -254,6 +255,144 @@ input, .skill-form textarea {
   padding: 10px 11px;
   background: white;
 }
+
+.plugin-panel {
+  margin: -4px -4px 0;
+  padding: 16px;
+  border-radius: 8px;
+  background: #202020;
+  color: #f8fafc;
+}
+
+.plugin-form {
+  display: grid;
+  gap: 15px;
+}
+
+.icon-field {
+  display: grid;
+  grid-template-columns: 56px 1fr;
+  gap: 11px;
+  align-items: center;
+}
+
+.icon-upload {
+  width: 56px;
+  height: 56px;
+  display: grid;
+  place-items: center;
+  border: 1px dashed #5f6368;
+  border-radius: 8px;
+  background: #242424;
+  color: #cbd5e1;
+}
+
+.icon-field label, .field-label {
+  display: grid;
+  gap: 7px;
+  color: #f8fafc;
+  font-size: 13px;
+}
+
+.icon-field label span, .field-label span { color: #a1a1aa; }
+.plugin-panel small { color: #a1a1aa; line-height: 1.35; }
+
+.plugin-panel input,
+.plugin-panel select {
+  width: 100%;
+  min-height: 36px;
+  border: 1px solid #3f3f46;
+  border-radius: 6px;
+  padding: 8px 11px;
+  background: #1f1f1f;
+  color: #f8fafc;
+}
+
+.plugin-panel input::placeholder { color: #8b8b91; }
+
+.connection-row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 10px;
+}
+
+.segmented {
+  display: inline-flex;
+  padding: 4px;
+  border-radius: 999px;
+  background: #686868;
+}
+
+.segmented button {
+  min-width: 78px;
+  min-height: 24px;
+  border: 0;
+  border-radius: 999px;
+  background: transparent;
+  color: #d4d4d8;
+  font-size: 11px;
+}
+
+.segmented button.active {
+  background: #2b2b2b;
+  color: white;
+}
+
+.risk-note {
+  display: flex;
+  gap: 10px;
+  align-items: center;
+  padding: 12px 14px;
+  border-radius: 8px;
+  background: #6b3507;
+  color: #fed7aa;
+  font-size: 13px;
+}
+
+.risk-note a { color: #ffedd5; }
+
+.save-plugin {
+  min-height: 38px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 8px;
+  border: 0;
+  border-radius: 7px;
+  background: #f8fafc;
+  color: #18181b;
+  font-weight: 700;
+}
+
+.server-list {
+  display: grid;
+  gap: 9px;
+  margin-top: 14px;
+}
+
+.server-item {
+  display: grid;
+  grid-template-columns: 34px 1fr;
+  gap: 10px;
+  padding: 10px;
+  border: 1px solid #3f3f46;
+  border-radius: 8px;
+  background: #18181b;
+}
+
+.server-avatar {
+  width: 34px;
+  height: 34px;
+  display: grid;
+  place-items: center;
+  border-radius: 7px;
+  background: #3730a3;
+  color: white;
+  font-weight: 800;
+}
+
+.server-item p { margin: 4px 0; color: #d4d4d8; font-size: 13px; }
 
 .chips, .skill-list { display: grid; gap: 8px; margin-top: 12px; }
 .chips span {

@@ -19,7 +19,7 @@ function App() {
   const [sending, setSending] = useState(false)
   const [mcpServers, setMcpServers] = useState([])
   const [skills, setSkills] = useState([])
-  const [mcpName, setMcpName] = useState('')
+  const [mcpForm, setMcpForm] = useState(createEmptyMcpForm())
   const [skillName, setSkillName] = useState('')
   const [skillInstructions, setSkillInstructions] = useState('')
 
@@ -104,10 +104,19 @@ function App() {
 
   async function addMcpServer(event) {
     event.preventDefault()
-    if (!mcpName.trim()) return
-    const data = await api.post('/api/mcp-servers', { name: mcpName.trim(), transport: 'stdio', env: {} })
+    if (!mcpForm.name.trim()) return
+    const data = await api.post('/api/mcp-servers', {
+      name: mcpForm.name.trim(),
+      description: mcpForm.description.trim() || null,
+      iconUrl: mcpForm.iconUrl.trim() || null,
+      connectionType: mcpForm.connectionType,
+      authType: mcpForm.authType,
+      transport: mcpForm.connectionType === 'server_url' ? 'sse' : 'http',
+      url: mcpForm.url.trim() || null,
+      env: {}
+    })
     setMcpServers((current) => [data.mcpServer, ...current])
-    setMcpName('')
+    setMcpForm(createEmptyMcpForm())
   }
 
   async function addSkill(event) {
@@ -155,10 +164,10 @@ function App() {
       <SettingsPanel
         mcpServers={mcpServers}
         skills={skills}
-        mcpName={mcpName}
+        mcpForm={mcpForm}
         skillName={skillName}
         skillInstructions={skillInstructions}
-        onMcpNameChange={setMcpName}
+        onMcpFormChange={setMcpForm}
         onSkillNameChange={setSkillName}
         onSkillInstructionsChange={setSkillInstructions}
         onAddMcpServer={addMcpServer}
@@ -166,6 +175,17 @@ function App() {
       />
     </div>
   )
+}
+
+function createEmptyMcpForm() {
+  return {
+    name: '',
+    description: '',
+    iconUrl: '',
+    connectionType: 'server_url',
+    url: '',
+    authType: 'oauth'
+  }
 }
 
 createRoot(document.getElementById('root')).render(<App />)

@@ -154,7 +154,11 @@ app.get('/api/mcp-servers', requireUser, (req, res) => {
 app.post('/api/mcp-servers', requireUser, (req, res) => {
   const payload = z.object({
     name: z.string().min(1).max(80),
-    transport: z.enum(['stdio', 'http', 'sse']).default('stdio'),
+    description: z.string().max(300).optional().nullable(),
+    iconUrl: z.string().max(500).optional().nullable(),
+    connectionType: z.enum(['server_url', 'tunnel']).default('server_url'),
+    authType: z.enum(['oauth', 'no_auth', 'mixed']).default('oauth'),
+    transport: z.enum(['stdio', 'http', 'sse']).default('sse'),
     command: z.string().max(500).optional().nullable(),
     url: z.string().max(500).optional().nullable(),
     env: z.record(z.string()).default({}),
@@ -162,9 +166,25 @@ app.post('/api/mcp-servers', requireUser, (req, res) => {
   }).parse(req.body)
   const id = nanoid()
   db.prepare(`
-    INSERT INTO mcp_servers (id, user_id, name, transport, command, url, env_json, enabled)
-    VALUES (?, ?, ?, ?, ?, ?, ?, ?)
-  `).run(id, req.user.id, payload.name, payload.transport, payload.command, payload.url, JSON.stringify(payload.env), payload.enabled ? 1 : 0)
+    INSERT INTO mcp_servers (
+      id, user_id, name, description, icon_url, connection_type, auth_type,
+      transport, command, url, env_json, enabled
+    )
+    VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+  `).run(
+    id,
+    req.user.id,
+    payload.name,
+    payload.description,
+    payload.iconUrl,
+    payload.connectionType,
+    payload.authType,
+    payload.transport,
+    payload.command,
+    payload.url,
+    JSON.stringify(payload.env),
+    payload.enabled ? 1 : 0
+  )
   res.status(201).json({ mcpServer: db.prepare('SELECT * FROM mcp_servers WHERE id = ?').get(id) })
 })
 
@@ -238,9 +258,26 @@ function listSkills(userId) {
 }
 
 function listMcpServers(userId) {
-  return db.prepare('SELECT id, name, transport, command, url, env_json, enabled, created_at, updated_at FROM mcp_servers WHERE user_id = ? ORDER BY created_at DESC')
+  return db.prepare(`
+    SELECT id, name, description, icon_url, connection_type, auth_type,
+           transport, command, url, env_json, enabled, created_at, updated_at
+    FROM mcp_servers
+    WHERE user_id = ?
+    ORDER BY created_at DESC
+  `)
     .all(userId)
-    .map((server) => ({ ...server, env: JSON.parse(server.env_json || '{}'), enabled: Boolean(server.enabled), env_json: undefined }))
+    .map((server) => ({
+      ...server,
+      iconUrl: server.icon_url,
+      connectionType: server.connection_type,
+      authType: server.auth_type,
+      env: JSON.parse(server.env_json || '{}'),
+      enabled: Boolean(server.enabled),
+      icon_url: undefined,
+      connection_type: undefined,
+      auth_type: undefined,
+      env_json: undefined
+    }))
 }
 
 function recordTokenUsage({ userId, conversationId, messageId, usage }) {
