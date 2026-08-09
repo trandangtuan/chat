@@ -6,6 +6,7 @@ Node.js ChatGPT-style multi-user chat app.
 - Private conversations and messages per authenticated user
 - Personal MCP server registry per user
 - Personal skill instructions per user
+- Personal rules and memory per user
 - OpenRouter chat completions from the server with `OPENROUTER_API_KEY`; otherwise the app returns a local development response
 - Streaming assistant responses with a `Thinking...` state while the first token is pending
 
@@ -51,7 +52,7 @@ docker compose up --build -d
 
 ## Data Ownership
 
-Every table that stores user content includes `user_id`, and every API query is scoped by the SSO-authenticated user. Conversations, messages, MCP servers, and skills are isolated by user.
+Every table that stores user content includes `user_id`, and every API query is scoped by the SSO-authenticated user. Conversations, messages, MCP servers, rules, memory, and skills are isolated by user.
 
 ## Token Usage
 

@@ -19,9 +19,15 @@ function App() {
   const [sending, setSending] = useState(false)
   const [mcpServers, setMcpServers] = useState([])
   const [skills, setSkills] = useState([])
+  const [rules, setRules] = useState([])
+  const [memories, setMemories] = useState([])
   const [mcpForm, setMcpForm] = useState(createEmptyMcpForm())
   const [skillName, setSkillName] = useState('')
   const [skillInstructions, setSkillInstructions] = useState('')
+  const [ruleTitle, setRuleTitle] = useState('')
+  const [ruleInstruction, setRuleInstruction] = useState('')
+  const [memoryTitle, setMemoryTitle] = useState('')
+  const [memoryContent, setMemoryContent] = useState('')
 
   const activeConversation = useMemo(
     () => conversations.find((conversation) => conversation.id === activeId),
@@ -43,15 +49,19 @@ function App() {
     try {
       const identity = await api.get('/api/me')
       setUser(identity.user)
-      const [conversationData, mcpData, skillData] = await Promise.all([
+      const [conversationData, mcpData, skillData, ruleData, memoryData] = await Promise.all([
         api.get('/api/conversations'),
         api.get('/api/mcp-servers'),
-        api.get('/api/skills')
+        api.get('/api/skills'),
+        api.get('/api/rules'),
+        api.get('/api/memories')
       ])
       setConversations(conversationData.conversations)
       setActiveId(conversationData.conversations[0]?.id || null)
       setMcpServers(mcpData.mcpServers)
       setSkills(skillData.skills)
+      setRules(ruleData.rules)
+      setMemories(memoryData.memories)
     } catch {
       setUser(null)
     } finally {
@@ -128,6 +138,24 @@ function App() {
     setSkillInstructions('')
   }
 
+  async function addRule(event) {
+    event.preventDefault()
+    if (!ruleTitle.trim() || !ruleInstruction.trim()) return
+    const data = await api.post('/api/rules', { title: ruleTitle.trim(), instruction: ruleInstruction.trim() })
+    setRules((current) => [data.rule, ...current])
+    setRuleTitle('')
+    setRuleInstruction('')
+  }
+
+  async function addMemory(event) {
+    event.preventDefault()
+    if (!memoryTitle.trim() || !memoryContent.trim()) return
+    const data = await api.post('/api/memories', { title: memoryTitle.trim(), content: memoryContent.trim() })
+    setMemories((current) => [data.memory, ...current])
+    setMemoryTitle('')
+    setMemoryContent('')
+  }
+
   async function logout() {
     await fetch('/auth/logout', { method: 'POST', credentials: 'include' })
     window.location.reload()
@@ -164,14 +192,26 @@ function App() {
       <SettingsPanel
         mcpServers={mcpServers}
         skills={skills}
+        rules={rules}
+        memories={memories}
         mcpForm={mcpForm}
         skillName={skillName}
         skillInstructions={skillInstructions}
+        ruleTitle={ruleTitle}
+        ruleInstruction={ruleInstruction}
+        memoryTitle={memoryTitle}
+        memoryContent={memoryContent}
         onMcpFormChange={setMcpForm}
         onSkillNameChange={setSkillName}
         onSkillInstructionsChange={setSkillInstructions}
+        onRuleTitleChange={setRuleTitle}
+        onRuleInstructionChange={setRuleInstruction}
+        onMemoryTitleChange={setMemoryTitle}
+        onMemoryContentChange={setMemoryContent}
         onAddMcpServer={addMcpServer}
         onAddSkill={addSkill}
+        onAddRule={addRule}
+        onAddMemory={addMemory}
       />
     </div>
   )

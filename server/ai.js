@@ -1,7 +1,7 @@
 import { config } from './config.js'
 
-export async function generateAssistantReply({ user, messages, skills, mcpServers }) {
-  const request = buildChatRequest({ user, messages, skills, mcpServers })
+export async function generateAssistantReply({ user, messages, skills, mcpServers, rules, memories }) {
+  const request = buildChatRequest({ user, messages, skills, mcpServers, rules, memories })
   if (!config.openrouterApiKey) {
     const content = buildLocalReply(request)
     return {
@@ -24,8 +24,8 @@ export async function generateAssistantReply({ user, messages, skills, mcpServer
   }
 }
 
-export async function streamAssistantReply({ user, messages, skills, mcpServers, onDelta }) {
-  const request = buildChatRequest({ user, messages, skills, mcpServers })
+export async function streamAssistantReply({ user, messages, skills, mcpServers, rules, memories, onDelta }) {
+  const request = buildChatRequest({ user, messages, skills, mcpServers, rules, memories })
   if (!config.openrouterApiKey) {
     const content = buildLocalReply(request)
     await onDelta(content)
@@ -74,12 +74,16 @@ export async function streamAssistantReply({ user, messages, skills, mcpServers,
   }
 }
 
-function buildChatRequest({ user, messages, skills, mcpServers }) {
+function buildChatRequest({ user, messages, skills, mcpServers, rules = [], memories = [] }) {
   const enabledSkills = skills.filter((skill) => skill.enabled)
   const enabledMcp = mcpServers.filter((server) => server.enabled)
+  const enabledRules = rules.filter((rule) => rule.enabled)
+  const enabledMemories = memories.filter((memory) => memory.enabled)
   const system = [
     'You are TDShift Chat AI, a concise and useful assistant.',
     `Current user: ${user.name || user.email || user.id}.`,
+    enabledRules.length ? `User rules:\n${enabledRules.map((rule) => `- ${rule.title}: ${rule.instruction}`).join('\n')}` : '',
+    enabledMemories.length ? `User memory:\n${enabledMemories.map((memory) => `- ${memory.title}: ${memory.content}`).join('\n')}` : '',
     enabledSkills.length ? `User skills:\n${enabledSkills.map((skill) => `- ${skill.name}: ${skill.instructions}`).join('\n')}` : '',
     enabledMcp.length ? `Available user MCP servers:\n${enabledMcp.map((server) => `- ${server.name} (${server.transport})`).join('\n')}` : '',
     'Do not claim you executed MCP tools unless the application provided tool results.'
@@ -88,6 +92,8 @@ function buildChatRequest({ user, messages, skills, mcpServers }) {
   return {
     enabledSkills,
     enabledMcp,
+    enabledRules,
+    enabledMemories,
     messages: [
       { role: 'system', content: system },
       ...messages.map((message) => ({ role: message.role, content: message.content }))
@@ -95,9 +101,11 @@ function buildChatRequest({ user, messages, skills, mcpServers }) {
   }
 }
 
-function buildLocalReply({ enabledSkills, enabledMcp }) {
+function buildLocalReply({ enabledSkills, enabledMcp, enabledRules, enabledMemories }) {
   return [
     'Mình đã nhận tin nhắn của bạn.',
+    enabledRules.length ? `Rule đang bật: ${enabledRules.map((rule) => rule.title).join(', ')}.` : 'Bạn chưa bật rule riêng nào.',
+    enabledMemories.length ? `Memory đang có: ${enabledMemories.map((memory) => memory.title).join(', ')}.` : 'Bạn chưa lưu memory riêng nào.',
     enabledSkills.length ? `Skill đang bật: ${enabledSkills.map((skill) => skill.name).join(', ')}.` : 'Bạn chưa bật skill riêng nào.',
     enabledMcp.length ? `MCP server đã cấu hình: ${enabledMcp.map((server) => server.name).join(', ')}.` : 'Bạn chưa cấu hình MCP server riêng.',
     'Để trả lời bằng model thật, hãy cấu hình OPENROUTER_API_KEY trên server.'

@@ -62,7 +62,9 @@ app.post('/api/conversations/:id/messages', requireUser, async (req, res, next) 
     `).all(req.params.id, req.user.id)
     const skills = listSkills(req.user.id)
     const mcpServers = listMcpServers(req.user.id)
-    const assistant = await generateAssistantReply({ user: req.user, messages, skills, mcpServers })
+    const rules = listRules(req.user.id)
+    const memories = listMemories(req.user.id)
+    const assistant = await generateAssistantReply({ user: req.user, messages, skills, mcpServers, rules, memories })
     const assistantMessageId = nanoid()
     db.prepare('INSERT INTO messages (id, conversation_id, user_id, role, content) VALUES (?, ?, ?, ?, ?)')
       .run(assistantMessageId, req.params.id, req.user.id, 'assistant', assistant.content)
@@ -113,11 +115,15 @@ app.post('/api/conversations/:id/messages/stream', requireUser, async (req, res,
     `).all(req.params.id, req.user.id)
     const skills = listSkills(req.user.id)
     const mcpServers = listMcpServers(req.user.id)
+    const rules = listRules(req.user.id)
+    const memories = listMemories(req.user.id)
     const assistant = await streamAssistantReply({
       user: req.user,
       messages,
       skills,
       mcpServers,
+      rules,
+      memories,
       onDelta: async (delta) => writeSse(res, 'delta', { delta })
     })
 
@@ -192,6 +198,38 @@ app.get('/api/skills', requireUser, (req, res) => {
   res.json({ skills: listSkills(req.user.id) })
 })
 
+app.get('/api/rules', requireUser, (req, res) => {
+  res.json({ rules: listRules(req.user.id) })
+})
+
+app.post('/api/rules', requireUser, (req, res) => {
+  const payload = z.object({
+    title: z.string().min(1).max(80),
+    instruction: z.string().min(1).max(10000),
+    enabled: z.boolean().default(true)
+  }).parse(req.body)
+  const id = nanoid()
+  db.prepare('INSERT INTO rules (id, user_id, title, instruction, enabled) VALUES (?, ?, ?, ?, ?)')
+    .run(id, req.user.id, payload.title, payload.instruction, payload.enabled ? 1 : 0)
+  res.status(201).json({ rule: db.prepare('SELECT * FROM rules WHERE id = ?').get(id) })
+})
+
+app.get('/api/memories', requireUser, (req, res) => {
+  res.json({ memories: listMemories(req.user.id) })
+})
+
+app.post('/api/memories', requireUser, (req, res) => {
+  const payload = z.object({
+    title: z.string().min(1).max(80),
+    content: z.string().min(1).max(10000),
+    enabled: z.boolean().default(true)
+  }).parse(req.body)
+  const id = nanoid()
+  db.prepare('INSERT INTO memories (id, user_id, title, content, enabled) VALUES (?, ?, ?, ?, ?)')
+    .run(id, req.user.id, payload.title, payload.content, payload.enabled ? 1 : 0)
+  res.status(201).json({ memory: db.prepare('SELECT * FROM memories WHERE id = ?').get(id) })
+})
+
 app.get('/api/usage/token-history', requireUser, (req, res) => {
   const limit = Math.min(Number(req.query.limit || 100), 500)
   const rows = db.prepare(`
@@ -255,6 +293,18 @@ function listSkills(userId) {
   return db.prepare('SELECT id, name, instructions, enabled, created_at, updated_at FROM skills WHERE user_id = ? ORDER BY created_at DESC')
     .all(userId)
     .map((skill) => ({ ...skill, enabled: Boolean(skill.enabled) }))
+}
+
+function listRules(userId) {
+  return db.prepare('SELECT id, title, instruction, enabled, created_at, updated_at FROM rules WHERE user_id = ? ORDER BY created_at DESC')
+    .all(userId)
+    .map((rule) => ({ ...rule, enabled: Boolean(rule.enabled) }))
+}
+
+function listMemories(userId) {
+  return db.prepare('SELECT id, title, content, enabled, created_at, updated_at FROM memories WHERE user_id = ? ORDER BY created_at DESC')
+    .all(userId)
+    .map((memory) => ({ ...memory, enabled: Boolean(memory.enabled) }))
 }
 
 function listMcpServers(userId) {
