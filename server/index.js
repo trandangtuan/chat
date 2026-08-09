@@ -201,40 +201,46 @@ app.post('/api/mcp-servers', requireUser, (req, res) => {
   res.status(201).json({ mcpServer: normalizeMcpServer(db.prepare('SELECT * FROM mcp_servers WHERE id = ?').get(id)) })
 })
 
-app.post('/api/mcp-servers/:id/connect', requireUser, (req, res) => {
-  const server = db.prepare('SELECT * FROM mcp_servers WHERE id = ? AND user_id = ?').get(req.params.id, req.user.id)
-  if (!server) return res.status(404).json({ error: 'MCP_SERVER_NOT_FOUND' })
-  if (server.auth_type === 'no_auth') {
-    db.prepare('UPDATE mcp_servers SET connection_status = ?, updated_at = CURRENT_TIMESTAMP WHERE id = ?').run('connected', server.id)
-    return res.json({ connected: true })
-  }
-  if (!server.url) {
-    return res.status(400).json({
-      error: 'MCP_SERVER_URL_REQUIRED',
-      message: 'OAuth/Mixed MCP servers require a server URL.'
-    })
-  }
+app.post('/api/mcp-servers/:id/connect', requireUser, async (req, res, next) => {
+  try {
+    const server = db.prepare('SELECT * FROM mcp_servers WHERE id = ? AND user_id = ?').get(req.params.id, req.user.id)
+    if (!server) return res.status(404).json({ error: 'MCP_SERVER_NOT_FOUND' })
+    if (server.auth_type === 'no_auth') {
+      db.prepare('UPDATE mcp_servers SET connection_status = ?, updated_at = CURRENT_TIMESTAMP WHERE id = ?').run('connected', server.id)
+      return res.json({ connected: true })
+    }
+    if (!server.url) {
+      return res.status(400).json({
+        error: 'MCP_SERVER_URL_REQUIRED',
+        message: 'OAuth/Mixed MCP servers require a server URL.'
+      })
+    }
 
-  const state = `oauth_s_${crypto.randomBytes(16).toString('hex')}`
-  const codeVerifier = crypto.randomBytes(64).toString('base64url')
-  const codeChallenge = crypto.createHash('sha256').update(codeVerifier).digest('base64url')
-  const redirectUri = `${config.appUrl}/api/mcp/oauth/callback`
-  const resource = normalizeMcpResource(server.url)
-  db.prepare(`
-    INSERT INTO mcp_oauth_states (state, user_id, mcp_server_id, code_verifier, redirect_uri, resource)
-    VALUES (?, ?, ?, ?, ?, ?)
-  `).run(state, req.user.id, server.id, codeVerifier, redirectUri, resource)
-  const authUrl = deriveMcpOAuthUrl(server.url, 'authorize')
-  authUrl.searchParams.set('response_type', 'code')
-  authUrl.searchParams.set('client_id', config.mcpOAuthClientId)
-  authUrl.searchParams.set('redirect_uri', redirectUri)
-  authUrl.searchParams.set('scope', config.mcpOAuthScopes)
-  authUrl.searchParams.set('code_challenge', codeChallenge)
-  authUrl.searchParams.set('code_challenge_method', 'S256')
-  authUrl.searchParams.set('resource', resource)
-  authUrl.searchParams.set('state', state)
-  authUrl.searchParams.set('ui_locales', config.mcpOAuthUiLocales)
-  res.json({ authUrl: authUrl.toString() })
+    const state = `oauth_s_${crypto.randomBytes(16).toString('hex')}`
+    const codeVerifier = crypto.randomBytes(64).toString('base64url')
+    const codeChallenge = crypto.createHash('sha256').update(codeVerifier).digest('base64url')
+    const redirectUri = `${config.appUrl}/api/mcp/oauth/callback`
+    const metadata = await discoverMcpOAuth(server.url)
+    const client = await ensureMcpOAuthClient(server, metadata, redirectUri)
+    db.prepare(`
+      INSERT INTO mcp_oauth_states (state, user_id, mcp_server_id, code_verifier, redirect_uri, resource)
+      VALUES (?, ?, ?, ?, ?, ?)
+    `).run(state, req.user.id, server.id, codeVerifier, redirectUri, metadata.resource)
+
+    const authUrl = new URL(metadata.authorizationEndpoint)
+    authUrl.searchParams.set('response_type', 'code')
+    authUrl.searchParams.set('client_id', client.clientId)
+    authUrl.searchParams.set('redirect_uri', redirectUri)
+    authUrl.searchParams.set('scope', client.scope || config.mcpOAuthScopes)
+    authUrl.searchParams.set('code_challenge', codeChallenge)
+    authUrl.searchParams.set('code_challenge_method', 'S256')
+    authUrl.searchParams.set('resource', metadata.resource)
+    authUrl.searchParams.set('state', state)
+    authUrl.searchParams.set('ui_locales', config.mcpOAuthUiLocales)
+    res.json({ authUrl: authUrl.toString() })
+  } catch (error) {
+    next(error)
+  }
 })
 
 app.post('/api/mcp-servers/:id/tools/refresh', requireUser, async (req, res, next) => {
@@ -438,18 +444,22 @@ function writeSse(res, event, data) {
 }
 
 async function exchangeMcpOAuthCode(server, storedState, code) {
-  const tokenUrl = deriveMcpOAuthUrl(server.url, 'token')
+  const tokenUrl = server.oauth_token_url || deriveMcpOAuthUrl(server.url, 'token').toString()
+  const clientId = server.oauth_client_id || config.mcpOAuthClientId
+  if (!clientId) throw new Error('MCP_OAUTH_CLIENT_NOT_REGISTERED')
+  const body = new URLSearchParams({
+    grant_type: 'authorization_code',
+    code,
+    redirect_uri: storedState.redirect_uri,
+    client_id: clientId,
+    code_verifier: storedState.code_verifier,
+    resource: storedState.resource
+  })
+  if (server.oauth_client_secret) body.set('client_secret', server.oauth_client_secret)
   const response = await fetch(tokenUrl, {
     method: 'POST',
     headers: { 'content-type': 'application/x-www-form-urlencoded' },
-    body: new URLSearchParams({
-      grant_type: 'authorization_code',
-      code,
-      redirect_uri: storedState.redirect_uri,
-      client_id: config.mcpOAuthClientId,
-      code_verifier: storedState.code_verifier,
-      resource: storedState.resource
-    })
+    body
   })
   if (!response.ok) {
     const detail = await response.text().catch(() => '')
@@ -457,6 +467,110 @@ async function exchangeMcpOAuthCode(server, storedState, code) {
     throw new Error('MCP_OAUTH_TOKEN_EXCHANGE_FAILED')
   }
   return response.json()
+}
+
+async function discoverMcpOAuth(serverUrl) {
+  const resource = normalizeMcpResource(serverUrl)
+  const fallback = {
+    authorizationEndpoint: deriveMcpOAuthUrl(serverUrl, 'authorize').toString(),
+    tokenEndpoint: deriveMcpOAuthUrl(serverUrl, 'token').toString(),
+    registrationEndpoint: null,
+    resource
+  }
+  const resourceMetadata = await fetchOptionalJson(buildProtectedResourceMetadataUrl(serverUrl))
+  const authorizationServer = resourceMetadata?.authorization_servers?.[0]
+  const authServerMetadataUrl = authorizationServer
+    ? buildAuthorizationServerMetadataUrl(authorizationServer)
+    : buildAuthorizationServerMetadataUrl(new URL(serverUrl).origin)
+  const authMetadata = await fetchOptionalJson(authServerMetadataUrl)
+
+  return {
+    authorizationEndpoint: authMetadata?.authorization_endpoint || fallback.authorizationEndpoint,
+    tokenEndpoint: authMetadata?.token_endpoint || fallback.tokenEndpoint,
+    registrationEndpoint: authMetadata?.registration_endpoint || fallback.registrationEndpoint,
+    resource: resourceMetadata?.resource || resource
+  }
+}
+
+async function ensureMcpOAuthClient(server, metadata, redirectUri) {
+  if (server.oauth_client_id) {
+    return {
+      clientId: server.oauth_client_id,
+      clientSecret: server.oauth_client_secret,
+      scope: server.oauth_scope
+    }
+  }
+  if (!metadata.registrationEndpoint) {
+    if (!config.mcpOAuthClientId) throw new Error('MCP_OAUTH_CLIENT_NOT_REGISTERED')
+    return { clientId: config.mcpOAuthClientId, clientSecret: null, scope: config.mcpOAuthScopes }
+  }
+
+  const response = await fetch(metadata.registrationEndpoint, {
+    method: 'POST',
+    headers: { 'content-type': 'application/json' },
+    body: JSON.stringify({
+      client_name: config.openrouterAppName,
+      redirect_uris: [redirectUri],
+      grant_types: ['authorization_code', 'refresh_token'],
+      response_types: ['code'],
+      token_endpoint_auth_method: 'none',
+      scope: config.mcpOAuthScopes
+    })
+  })
+  if (!response.ok) {
+    const detail = await response.text().catch(() => '')
+    console.error('MCP OAuth dynamic client registration failed', response.status, detail)
+    throw new Error('MCP_OAUTH_CLIENT_REGISTRATION_FAILED')
+  }
+  const payload = await response.json()
+  if (!payload.client_id) throw new Error('MCP_OAUTH_CLIENT_REGISTRATION_FAILED')
+
+  db.prepare(`
+    UPDATE mcp_servers
+    SET oauth_authorize_url = ?, oauth_token_url = ?, oauth_client_id = ?,
+        oauth_client_secret = ?, oauth_scope = ?, updated_at = CURRENT_TIMESTAMP
+    WHERE id = ?
+  `).run(
+    metadata.authorizationEndpoint,
+    metadata.tokenEndpoint,
+    payload.client_id,
+    payload.client_secret || null,
+    payload.scope || config.mcpOAuthScopes,
+    server.id
+  )
+
+  return {
+    clientId: payload.client_id,
+    clientSecret: payload.client_secret || null,
+    scope: payload.scope || config.mcpOAuthScopes
+  }
+}
+
+async function fetchOptionalJson(url) {
+  try {
+    const response = await fetch(url, { headers: { accept: 'application/json' } })
+    if (!response.ok) return null
+    return response.json()
+  } catch (error) {
+    console.warn('MCP OAuth metadata discovery failed', url, error.message)
+    return null
+  }
+}
+
+function buildProtectedResourceMetadataUrl(serverUrl) {
+  const url = new URL(serverUrl)
+  const metadata = new URL('/.well-known/oauth-protected-resource', url.origin)
+  metadata.pathname = `${metadata.pathname}${url.pathname.replace(/\/$/, '')}`
+  return metadata.toString()
+}
+
+function buildAuthorizationServerMetadataUrl(issuerUrl) {
+  const url = new URL(issuerUrl)
+  const issuerPath = url.pathname === '/' ? '' : url.pathname.replace(/\/$/, '')
+  url.pathname = `${issuerPath}/.well-known/oauth-authorization-server`
+  url.search = ''
+  url.hash = ''
+  return url.toString()
 }
 
 function deriveMcpOAuthUrl(serverUrl, endpoint) {

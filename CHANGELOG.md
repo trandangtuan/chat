@@ -5,6 +5,7 @@
 - Add MCP server list and New Plugin connection flow in Settings.
 - Add browser-based MCP server connection flow for OAuth or Mixed authentication.
 - Generate MCP OAuth Authorization Code + PKCE URLs from the MCP Server URL.
+- Discover MCP OAuth metadata and dynamically register clients before authorization.
 - Add delete action for user MCP servers.
 - Display tools exposed by connected MCP servers and allow OpenRouter to call them.
 - Add per-user Rules for durable assistant behavior instructions.
