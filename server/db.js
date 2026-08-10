@@ -137,6 +137,34 @@ db.exec(`
     created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP
   );
 
+  CREATE TABLE IF NOT EXISTS live_chat_shares (
+    id TEXT PRIMARY KEY,
+    user_id TEXT NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+    share_key TEXT NOT NULL UNIQUE,
+    name TEXT NOT NULL,
+    allowed_origin TEXT,
+    enabled INTEGER NOT NULL DEFAULT 1,
+    created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    updated_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP
+  );
+
+  CREATE TABLE IF NOT EXISTS live_chat_sessions (
+    id TEXT PRIMARY KEY,
+    share_id TEXT NOT NULL REFERENCES live_chat_shares(id) ON DELETE CASCADE,
+    visitor_key TEXT NOT NULL,
+    page_url TEXT,
+    created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    updated_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP
+  );
+
+  CREATE TABLE IF NOT EXISTS live_chat_messages (
+    id TEXT PRIMARY KEY,
+    session_id TEXT NOT NULL REFERENCES live_chat_sessions(id) ON DELETE CASCADE,
+    role TEXT NOT NULL CHECK (role IN ('user', 'assistant')),
+    content TEXT NOT NULL,
+    created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP
+  );
+
   CREATE INDEX IF NOT EXISTS idx_token_usage_user_created_at
     ON token_usage (user_id, created_at);
 
@@ -145,6 +173,12 @@ db.exec(`
 
   CREATE INDEX IF NOT EXISTS idx_mcp_tools_server
     ON mcp_tools (mcp_server_id);
+
+  CREATE INDEX IF NOT EXISTS idx_live_chat_sessions_share
+    ON live_chat_sessions (share_id, updated_at);
+
+  CREATE INDEX IF NOT EXISTS idx_live_chat_messages_session
+    ON live_chat_messages (session_id, created_at);
 `)
 
 ensureColumn('mcp_servers', 'description', 'TEXT')

@@ -1,5 +1,5 @@
 import React, { useState } from 'react'
-import { AlertTriangle, ArrowLeft, Boxes, Brain, Coins, ListChecks, Plus, ServerCog, Trash2, X } from 'lucide-react'
+import { AlertTriangle, ArrowLeft, Boxes, Brain, Coins, ListChecks, MessageCircle, Plus, ServerCog, Trash2, X } from 'lucide-react'
 
 export function SettingsPanel({
   mcpServers,
@@ -7,6 +7,7 @@ export function SettingsPanel({
   rules,
   memories,
   tokenUsage,
+  liveChatShares,
   settingsError,
   mcpForm,
   skillName,
@@ -16,6 +17,8 @@ export function SettingsPanel({
   ruleInstruction,
   memoryTitle,
   memoryContent,
+  liveChatName,
+  liveChatOrigin,
   onMcpFormChange,
   onSkillNameChange,
   onSkillDescriptionChange,
@@ -24,6 +27,8 @@ export function SettingsPanel({
   onRuleInstructionChange,
   onMemoryTitleChange,
   onMemoryContentChange,
+  onLiveChatNameChange,
+  onLiveChatOriginChange,
   onAddMcpServer,
   onConnectMcpServer,
   onDeleteMcpServer,
@@ -31,6 +36,7 @@ export function SettingsPanel({
   onAddSkill,
   onAddRule,
   onAddMemory,
+  onAddLiveChatShare,
   onClose
 }) {
   const [activeSetting, setActiveSetting] = useState('mcp')
@@ -114,6 +120,17 @@ export function SettingsPanel({
               <TokenUsagePanel tokenUsage={tokenUsage} />
             </SettingsSection>
           )}
+
+          {activeSetting === 'live-chat' && (
+            <SettingsSection icon={<MessageCircle size={17} />} title="Live chat">
+              <form onSubmit={onAddLiveChatShare} className="setting-form">
+                <input value={liveChatName} onChange={(event) => onLiveChatNameChange(event.target.value)} placeholder="Website name" />
+                <input value={liveChatOrigin} onChange={(event) => onLiveChatOriginChange(event.target.value)} placeholder="Allowed origin, e.g. https://example.com" />
+                <button><Plus size={16} /> Create share</button>
+              </form>
+              <LiveChatShareList shares={liveChatShares || []} />
+            </SettingsSection>
+          )}
         </div>
       </aside>
     </div>
@@ -126,7 +143,8 @@ function SettingsMenu({ activeSetting, onSelect }) {
     { id: 'skills', label: 'Skills', icon: Boxes },
     { id: 'rules', label: 'Rules', icon: ListChecks },
     { id: 'memory', label: 'Memory', icon: Brain },
-    { id: 'tokens', label: 'Token usage', icon: Coins }
+    { id: 'tokens', label: 'Token usage', icon: Coins },
+    { id: 'live-chat', label: 'Live chat', icon: MessageCircle }
   ]
 
   return (
@@ -146,6 +164,28 @@ function SettingsMenu({ activeSetting, onSelect }) {
         )
       })}
     </nav>
+  )
+}
+
+function LiveChatShareList({ shares }) {
+  return (
+    <div className="live-chat-share-list">
+      {shares.map((share) => (
+        <article key={share.id}>
+          <strong>{share.name}</strong>
+          <small>{share.allowedOrigin || 'Any website origin'}</small>
+          <label>
+            Script tag
+            <textarea readOnly value={share.scriptTag} />
+          </label>
+          <label>
+            Script URL
+            <input readOnly value={share.scriptUrl} />
+          </label>
+        </article>
+      ))}
+      {!shares.length && <small>No live chat shares yet</small>}
+    </div>
   )
 }
 

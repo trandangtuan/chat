@@ -16,6 +16,7 @@ Time zone: Asia/Ho_Chi_Minh (UTC+07:00).
 - Add a Settings menu with separate MCP, Skills, Rules, Memory, and Token usage views.
 - Move Settings into a sidebar button above Sign out and show settings views in a dialog.
 - Add skill descriptions and select relevant skills by name/description before injecting detailed skill instructions.
+- Add shareable live chat embeds with public widget sessions that reuse the owner's MCP servers, skills, rules, and memory.
 
 ## 2026-08-09 16:17:53 +0700 - `d8c89e3`
 

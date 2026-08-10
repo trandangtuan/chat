@@ -22,7 +22,10 @@ function App() {
   const [rules, setRules] = useState([])
   const [memories, setMemories] = useState([])
   const [tokenUsage, setTokenUsage] = useState({ usage: [], summary: [] })
+  const [liveChatShares, setLiveChatShares] = useState([])
   const [mcpForm, setMcpForm] = useState(createEmptyMcpForm())
+  const [liveChatName, setLiveChatName] = useState('')
+  const [liveChatOrigin, setLiveChatOrigin] = useState('')
   const [skillName, setSkillName] = useState('')
   const [skillDescription, setSkillDescription] = useState('')
   const [skillInstructions, setSkillInstructions] = useState('')
@@ -53,13 +56,14 @@ function App() {
     try {
       const identity = await api.get('/api/me')
       setUser(identity.user)
-      const [conversationData, mcpData, skillData, ruleData, memoryData, tokenData] = await Promise.all([
+      const [conversationData, mcpData, skillData, ruleData, memoryData, tokenData, liveChatData] = await Promise.all([
         api.get('/api/conversations'),
         api.get('/api/mcp-servers'),
         api.get('/api/skills'),
         api.get('/api/rules'),
         api.get('/api/memories'),
-        api.get('/api/usage/token-history?limit=50')
+        api.get('/api/usage/token-history?limit=50'),
+        api.get('/api/live-chat-shares')
       ])
       setConversations(conversationData.conversations)
       setActiveId(conversationData.conversations[0]?.id || null)
@@ -68,6 +72,7 @@ function App() {
       setRules(ruleData.rules)
       setMemories(memoryData.memories)
       setTokenUsage(tokenData)
+      setLiveChatShares(liveChatData.shares)
     } catch {
       setUser(null)
     } finally {
@@ -217,6 +222,18 @@ function App() {
     setMemoryContent('')
   }
 
+  async function addLiveChatShare(event) {
+    event.preventDefault()
+    if (!liveChatName.trim()) return
+    const data = await api.post('/api/live-chat-shares', {
+      name: liveChatName.trim(),
+      allowedOrigin: liveChatOrigin.trim() || null
+    })
+    setLiveChatShares((current) => [data.share, ...current])
+    setLiveChatName('')
+    setLiveChatOrigin('')
+  }
+
   async function logout() {
     await fetch('/auth/logout', { method: 'POST', credentials: 'include' })
     window.location.reload()
@@ -258,6 +275,7 @@ function App() {
           rules={rules}
           memories={memories}
           tokenUsage={tokenUsage}
+          liveChatShares={liveChatShares}
           settingsError={settingsError}
           mcpForm={mcpForm}
           skillName={skillName}
@@ -267,6 +285,8 @@ function App() {
           ruleInstruction={ruleInstruction}
           memoryTitle={memoryTitle}
           memoryContent={memoryContent}
+          liveChatName={liveChatName}
+          liveChatOrigin={liveChatOrigin}
           onClose={() => setSettingsOpen(false)}
           onMcpFormChange={setMcpForm}
           onSkillNameChange={setSkillName}
@@ -276,6 +296,8 @@ function App() {
           onRuleInstructionChange={setRuleInstruction}
           onMemoryTitleChange={setMemoryTitle}
           onMemoryContentChange={setMemoryContent}
+          onLiveChatNameChange={setLiveChatName}
+          onLiveChatOriginChange={setLiveChatOrigin}
           onAddMcpServer={addMcpServer}
           onConnectMcpServer={connectMcpServer}
           onDeleteMcpServer={deleteMcpServer}
@@ -283,6 +305,7 @@ function App() {
           onAddSkill={addSkill}
           onAddRule={addRule}
           onAddMemory={addMemory}
+          onAddLiveChatShare={addLiveChatShare}
         />
       )}
     </div>

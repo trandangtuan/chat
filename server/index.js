@@ -13,8 +13,17 @@ import { listMcpTools, refreshMcpToolsForServer } from './mcp.js'
 
 const app = express()
 
-app.use(helmet({ contentSecurityPolicy: false }))
-app.use(cors({ origin: config.appUrl, credentials: true }))
+app.use(helmet({
+  contentSecurityPolicy: false,
+  crossOriginResourcePolicy: { policy: 'cross-origin' }
+}))
+app.use(cors((req, callback) => {
+  if (req.path.startsWith('/api/live-chat') || req.path.startsWith('/live-chat')) {
+    callback(null, { origin: true, credentials: false })
+    return
+  }
+  callback(null, { origin: config.appUrl, credentials: true })
+}))
 app.use(express.json({ limit: '1mb' }))
 app.use(cookieParser(config.sessionSecret))
 
@@ -351,6 +360,114 @@ app.get('/api/usage/token-history', requireUser, (req, res) => {
   res.json({ usage: rows, summary })
 })
 
+app.get('/api/live-chat-shares', requireUser, (req, res) => {
+  const shares = db.prepare(`
+    SELECT id, share_key, name, allowed_origin, enabled, created_at, updated_at
+    FROM live_chat_shares
+    WHERE user_id = ?
+    ORDER BY created_at DESC
+  `).all(req.user.id).map(normalizeLiveChatShare)
+  res.json({ shares })
+})
+
+app.post('/api/live-chat-shares', requireUser, (req, res) => {
+  const payload = z.object({
+    name: z.string().min(1).max(120),
+    allowedOrigin: z.string().max(300).optional().nullable()
+  }).parse(req.body)
+  const id = nanoid()
+  const shareKey = `lc_${crypto.randomBytes(18).toString('base64url')}`
+  db.prepare(`
+    INSERT INTO live_chat_shares (id, user_id, share_key, name, allowed_origin)
+    VALUES (?, ?, ?, ?, ?)
+  `).run(id, req.user.id, shareKey, payload.name, payload.allowedOrigin || null)
+  const share = db.prepare('SELECT id, share_key, name, allowed_origin, enabled, created_at, updated_at FROM live_chat_shares WHERE id = ?').get(id)
+  res.status(201).json({ share: normalizeLiveChatShare(share) })
+})
+
+app.get('/live-chat/widget.js', (req, res) => {
+  res.type('application/javascript').send(buildLiveChatWidgetScript(String(req.query.key || '')))
+})
+
+app.post('/api/live-chat/:shareKey/session', (req, res) => {
+  const share = getLiveChatShare(req.params.shareKey)
+  if (!share) return res.status(404).json({ error: 'LIVE_CHAT_SHARE_NOT_FOUND' })
+  if (!isAllowedLiveChatOrigin(share, req.body?.origin || req.get('origin'))) {
+    return res.status(403).json({ error: 'LIVE_CHAT_ORIGIN_NOT_ALLOWED' })
+  }
+  const visitorKey = String(req.body?.visitorKey || crypto.randomBytes(16).toString('base64url'))
+  let session = db.prepare('SELECT * FROM live_chat_sessions WHERE share_id = ? AND visitor_key = ?')
+    .get(share.id, visitorKey)
+  if (!session) {
+    const id = nanoid()
+    db.prepare(`
+      INSERT INTO live_chat_sessions (id, share_id, visitor_key, page_url)
+      VALUES (?, ?, ?, ?)
+    `).run(id, share.id, visitorKey, String(req.body?.pageUrl || ''))
+    session = db.prepare('SELECT * FROM live_chat_sessions WHERE id = ?').get(id)
+  }
+  const messages = listLiveChatMessages(session.id)
+  res.json({ sessionId: session.id, visitorKey, messages, share: { name: share.name } })
+})
+
+app.post('/api/live-chat/:shareKey/sessions/:sessionId/messages/stream', async (req, res, next) => {
+  let streamStarted = false
+  try {
+    const share = getLiveChatShare(req.params.shareKey)
+    if (!share) return res.status(404).json({ error: 'LIVE_CHAT_SHARE_NOT_FOUND' })
+    if (!isAllowedLiveChatOrigin(share, req.body?.origin || req.get('origin'))) {
+      return res.status(403).json({ error: 'LIVE_CHAT_ORIGIN_NOT_ALLOWED' })
+    }
+    const session = db.prepare('SELECT * FROM live_chat_sessions WHERE id = ? AND share_id = ?')
+      .get(req.params.sessionId, share.id)
+    if (!session) return res.status(404).json({ error: 'LIVE_CHAT_SESSION_NOT_FOUND' })
+    const { content } = z.object({ content: z.string().min(1).max(20000) }).parse(req.body)
+    const userMessageId = nanoid()
+    const assistantMessageId = nanoid()
+    db.prepare('INSERT INTO live_chat_messages (id, session_id, role, content) VALUES (?, ?, ?, ?)')
+      .run(userMessageId, session.id, 'user', content)
+
+    res.writeHead(200, {
+      'content-type': 'text/event-stream; charset=utf-8',
+      'cache-control': 'no-cache, no-transform',
+      connection: 'keep-alive',
+      'x-accel-buffering': 'no',
+      'access-control-allow-origin': req.get('origin') || '*'
+    })
+    streamStarted = true
+    writeSse(res, 'start', { userMessageId, assistantMessageId })
+
+    const owner = db.prepare('SELECT id, email, name FROM users WHERE id = ?').get(share.user_id)
+    const messages = listLiveChatMessages(session.id).map((message) => ({ role: message.role, content: message.content }))
+    const assistant = await streamAssistantReply({
+      user: owner,
+      messages,
+      skills: listSkills(share.user_id),
+      mcpServers: listMcpServers(share.user_id),
+      rules: listRules(share.user_id),
+      memories: listMemories(share.user_id),
+      onDelta: async (delta) => writeSse(res, 'delta', { delta })
+    })
+    db.prepare('INSERT INTO live_chat_messages (id, session_id, role, content) VALUES (?, ?, ?, ?)')
+      .run(assistantMessageId, session.id, 'assistant', assistant.content)
+    db.prepare('UPDATE live_chat_sessions SET updated_at = CURRENT_TIMESTAMP WHERE id = ?').run(session.id)
+    recordTokenUsage({ userId: share.user_id, conversationId: null, messageId: null, usage: assistant.usage })
+    writeSse(res, 'done', {
+      userMessage: { id: userMessageId, role: 'user', content },
+      assistantMessage: { id: assistantMessageId, role: 'assistant', content: assistant.content },
+      usage: assistant.usage
+    })
+    res.end()
+  } catch (error) {
+    if (streamStarted) {
+      writeSse(res, 'error', { error: error.message || 'STREAM_FAILED' })
+      res.end()
+      return
+    }
+    next(error)
+  }
+})
+
 app.post('/api/skills', requireUser, (req, res) => {
   const payload = z.object({
     name: z.string().min(1).max(80),
@@ -415,6 +532,176 @@ function listMcpServers(userId) {
   `)
     .all(userId)
     .map(normalizeMcpServer)
+}
+
+function listLiveChatMessages(sessionId) {
+  return db.prepare(`
+    SELECT id, role, content, created_at
+    FROM live_chat_messages
+    WHERE session_id = ?
+    ORDER BY created_at ASC
+  `).all(sessionId)
+}
+
+function getLiveChatShare(shareKey) {
+  return db.prepare('SELECT * FROM live_chat_shares WHERE share_key = ? AND enabled = 1').get(shareKey)
+}
+
+function normalizeLiveChatShare(share) {
+  const scriptUrl = `${config.appUrl}/live-chat/widget.js?key=${encodeURIComponent(share.share_key)}`
+  return {
+    id: share.id,
+    shareKey: share.share_key,
+    name: share.name,
+    allowedOrigin: share.allowed_origin,
+    enabled: Boolean(share.enabled),
+    scriptUrl,
+    scriptTag: `<script src="${scriptUrl}" defer></script>`,
+    created_at: share.created_at,
+    updated_at: share.updated_at
+  }
+}
+
+function isAllowedLiveChatOrigin(share, origin) {
+  if (!share.allowed_origin) return true
+  try {
+    return new URL(origin).origin === new URL(share.allowed_origin).origin
+  } catch {
+    return false
+  }
+}
+
+function buildLiveChatWidgetScript(defaultShareKey) {
+  const baseUrl = JSON.stringify(config.appUrl)
+  const shareKey = JSON.stringify(defaultShareKey)
+  return `
+;(function () {
+  var script = document.currentScript
+  var baseUrl = script && script.dataset.baseUrl ? script.dataset.baseUrl : ${baseUrl}
+  var shareKey = script && script.dataset.shareKey ? script.dataset.shareKey : ${shareKey}
+  if (!shareKey || window.__tdshiftLiveChat) return
+  window.__tdshiftLiveChat = true
+
+  var storageKey = 'tdshift_live_chat_' + shareKey
+  var visitorKey = localStorage.getItem(storageKey) || Math.random().toString(36).slice(2) + Date.now().toString(36)
+  localStorage.setItem(storageKey, visitorKey)
+  var sessionId = ''
+  var messages = []
+  var expanded = false
+
+  var root = document.createElement('div')
+  root.id = 'tdshift-live-chat'
+  document.body.appendChild(root)
+  var style = document.createElement('style')
+  style.textContent = '#tdshift-live-chat{position:fixed;z-index:2147483647;right:18px;bottom:18px;font-family:Inter,ui-sans-serif,system-ui,-apple-system,BlinkMacSystemFont,"Segoe UI",sans-serif;color:#111827}#tdshift-live-chat *{box-sizing:border-box}#tdshift-live-chat .tlc-mini{display:flex;gap:8px;width:min(360px,calc(100vw - 36px));padding:10px;border:1px solid #dfe3e8;border-radius:10px;background:#fff;box-shadow:0 18px 55px rgba(15,23,42,.22)}#tdshift-live-chat input,#tdshift-live-chat textarea{width:100%;border:1px solid #dfe3e8;border-radius:8px;padding:10px 11px;font:inherit}#tdshift-live-chat button{border:0;border-radius:8px;background:#2563eb;color:#fff;font:inherit;font-weight:700;cursor:pointer}#tdshift-live-chat .tlc-mini button{width:42px}#tdshift-live-chat .tlc-panel{display:grid;grid-template-rows:auto 1fr auto;width:min(390px,calc(100vw - 36px));height:min(620px,calc(100vh - 36px));border:1px solid #dfe3e8;border-radius:12px;background:#fff;box-shadow:0 24px 80px rgba(15,23,42,.28);overflow:hidden}#tdshift-live-chat .tlc-head{display:flex;align-items:center;justify-content:space-between;gap:12px;padding:13px 14px;border-bottom:1px solid #dfe3e8}#tdshift-live-chat .tlc-head strong{display:block;font-size:14px}#tdshift-live-chat .tlc-head small{display:block;color:#667085;font-size:12px}#tdshift-live-chat .tlc-close{width:32px;height:32px;background:#f8fafc;color:#111827;border:1px solid #dfe3e8}#tdshift-live-chat .tlc-body{display:flex;flex-direction:column;gap:10px;min-height:0;overflow-y:auto;padding:14px;background:#f8fafc}#tdshift-live-chat .tlc-msg{max-width:86%;padding:9px 10px;border-radius:10px;font-size:14px;line-height:1.4;white-space:pre-wrap;overflow-wrap:anywhere}#tdshift-live-chat .tlc-user{align-self:flex-end;background:#2563eb;color:#fff}#tdshift-live-chat .tlc-assistant{align-self:flex-start;background:#fff;border:1px solid #dfe3e8}#tdshift-live-chat .tlc-form{display:grid;grid-template-columns:1fr 44px;gap:8px;padding:12px;border-top:1px solid #dfe3e8}#tdshift-live-chat .tlc-form textarea{height:44px;min-height:44px;max-height:110px;resize:none}#tdshift-live-chat .tlc-form button{height:44px}'
+  document.head.appendChild(style)
+
+  function render() {
+    root.innerHTML = ''
+    if (!expanded && !messages.length) {
+      var mini = document.createElement('form')
+      mini.className = 'tlc-mini'
+      mini.innerHTML = '<input placeholder="Chat with us" aria-label="Chat message"><button type="submit">➜</button>'
+      mini.onsubmit = function (event) {
+        event.preventDefault()
+        var input = mini.querySelector('input')
+        send(input.value)
+        input.value = ''
+      }
+      root.appendChild(mini)
+      return
+    }
+
+    expanded = true
+    var panel = document.createElement('section')
+    panel.className = 'tlc-panel'
+    panel.innerHTML = '<div class="tlc-head"><div><strong>Live chat</strong><small>TDShift AI assistant</small></div><button class="tlc-close" type="button" aria-label="Close">×</button></div><div class="tlc-body"></div><form class="tlc-form"><textarea placeholder="Type a message" aria-label="Chat message"></textarea><button type="submit">➜</button></form>'
+    panel.querySelector('.tlc-close').onclick = function () { expanded = false; root.innerHTML = '<button class="tlc-mini" type="button" style="justify-content:center;font-weight:700">Open chat</button>'; root.firstChild.onclick = function(){ expanded = true; render() } }
+    var body = panel.querySelector('.tlc-body')
+    messages.forEach(function (message) {
+      var bubble = document.createElement('div')
+      bubble.className = 'tlc-msg ' + (message.role === 'user' ? 'tlc-user' : 'tlc-assistant')
+      bubble.textContent = message.content
+      body.appendChild(bubble)
+    })
+    var form = panel.querySelector('form')
+    form.onsubmit = function (event) {
+      event.preventDefault()
+      var textarea = form.querySelector('textarea')
+      send(textarea.value)
+      textarea.value = ''
+    }
+    root.appendChild(panel)
+    body.scrollTop = body.scrollHeight
+  }
+
+  async function ensureSession() {
+    if (sessionId) return
+    var response = await fetch(baseUrl + '/api/live-chat/' + encodeURIComponent(shareKey) + '/session', {
+      method: 'POST',
+      headers: { 'content-type': 'application/json' },
+      body: JSON.stringify({ visitorKey: visitorKey, pageUrl: location.href, origin: location.origin })
+    })
+    if (!response.ok) throw new Error('LIVE_CHAT_SESSION_FAILED')
+    var data = await response.json()
+    sessionId = data.sessionId
+    visitorKey = data.visitorKey
+    messages = data.messages || []
+    localStorage.setItem(storageKey, visitorKey)
+  }
+
+  async function send(content) {
+    content = String(content || '').trim()
+    if (!content) return
+    expanded = true
+    await ensureSession()
+    var assistant = { role: 'assistant', content: 'Thinking...' }
+    messages.push({ role: 'user', content: content }, assistant)
+    render()
+    var response = await fetch(baseUrl + '/api/live-chat/' + encodeURIComponent(shareKey) + '/sessions/' + encodeURIComponent(sessionId) + '/messages/stream', {
+      method: 'POST',
+      headers: { 'content-type': 'application/json' },
+      body: JSON.stringify({ content: content, origin: location.origin })
+    })
+    if (!response.ok || !response.body) throw new Error('LIVE_CHAT_STREAM_FAILED')
+    var reader = response.body.getReader()
+    var decoder = new TextDecoder()
+    var buffer = ''
+    assistant.content = ''
+    while (true) {
+      var chunk = await reader.read()
+      if (chunk.done) break
+      buffer += decoder.decode(chunk.value, { stream: true })
+      var blocks = buffer.split('\\n\\n')
+      buffer = blocks.pop() || ''
+      blocks.forEach(function (block) {
+        var parsed = parseEvent(block)
+        if (parsed.event === 'delta') {
+          assistant.content += parsed.data.delta || ''
+          render()
+        }
+        if (parsed.event === 'done') {
+          messages[messages.length - 2] = parsed.data.userMessage
+          messages[messages.length - 1] = parsed.data.assistantMessage
+          render()
+        }
+      })
+    }
+  }
+
+  function parseEvent(block) {
+    var event = 'message'
+    var data = []
+    block.split('\\n').forEach(function (line) {
+      if (line.indexOf('event:') === 0) event = line.slice(6).trim()
+      if (line.indexOf('data:') === 0) data.push(line.slice(5).trim())
+    })
+    return { event: event, data: data.length ? JSON.parse(data.join('\\n')) : null }
+  }
+
+  ensureSession().then(render).catch(render)
+})()
+`
 }
 
 function recordTokenUsage({ userId, conversationId, messageId, usage }) {
