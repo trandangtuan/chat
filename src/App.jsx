@@ -30,6 +30,7 @@ function App() {
   const [memoryTitle, setMemoryTitle] = useState('')
   const [memoryContent, setMemoryContent] = useState('')
   const [settingsError, setSettingsError] = useState('')
+  const [settingsOpen, setSettingsOpen] = useState(false)
 
   const activeConversation = useMemo(
     () => conversations.find((conversation) => conversation.id === activeId),
@@ -231,6 +232,7 @@ function App() {
         activeId={activeId}
         onCreateConversation={createConversation}
         onSelectConversation={setActiveId}
+        onOpenSettings={() => setSettingsOpen(true)}
         onLogout={logout}
       />
       <ChatPanel
@@ -243,35 +245,38 @@ function App() {
         onSendMessage={sendMessage}
         onCreateConversation={createConversation}
       />
-      <SettingsPanel
-        mcpServers={mcpServers}
-        skills={skills}
-        rules={rules}
-        memories={memories}
-        tokenUsage={tokenUsage}
-        settingsError={settingsError}
-        mcpForm={mcpForm}
-        skillName={skillName}
-        skillInstructions={skillInstructions}
-        ruleTitle={ruleTitle}
-        ruleInstruction={ruleInstruction}
-        memoryTitle={memoryTitle}
-        memoryContent={memoryContent}
-        onMcpFormChange={setMcpForm}
-        onSkillNameChange={setSkillName}
-        onSkillInstructionsChange={setSkillInstructions}
-        onRuleTitleChange={setRuleTitle}
-        onRuleInstructionChange={setRuleInstruction}
-        onMemoryTitleChange={setMemoryTitle}
-        onMemoryContentChange={setMemoryContent}
-        onAddMcpServer={addMcpServer}
-        onConnectMcpServer={connectMcpServer}
-        onDeleteMcpServer={deleteMcpServer}
-        onRefreshMcpTools={refreshMcpTools}
-        onAddSkill={addSkill}
-        onAddRule={addRule}
-        onAddMemory={addMemory}
-      />
+      {settingsOpen && (
+        <SettingsPanel
+          mcpServers={mcpServers}
+          skills={skills}
+          rules={rules}
+          memories={memories}
+          tokenUsage={tokenUsage}
+          settingsError={settingsError}
+          mcpForm={mcpForm}
+          skillName={skillName}
+          skillInstructions={skillInstructions}
+          ruleTitle={ruleTitle}
+          ruleInstruction={ruleInstruction}
+          memoryTitle={memoryTitle}
+          memoryContent={memoryContent}
+          onClose={() => setSettingsOpen(false)}
+          onMcpFormChange={setMcpForm}
+          onSkillNameChange={setSkillName}
+          onSkillInstructionsChange={setSkillInstructions}
+          onRuleTitleChange={setRuleTitle}
+          onRuleInstructionChange={setRuleInstruction}
+          onMemoryTitleChange={setMemoryTitle}
+          onMemoryContentChange={setMemoryContent}
+          onAddMcpServer={addMcpServer}
+          onConnectMcpServer={connectMcpServer}
+          onDeleteMcpServer={deleteMcpServer}
+          onRefreshMcpTools={refreshMcpTools}
+          onAddSkill={addSkill}
+          onAddRule={addRule}
+          onAddMemory={addMemory}
+        />
+      )}
     </div>
   )
 }

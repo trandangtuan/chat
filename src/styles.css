@@ -64,7 +64,7 @@ button { cursor: pointer; }
 .app-shell {
   height: 100vh;
   display: grid;
-  grid-template-columns: 280px minmax(0, 1fr) 340px;
+  grid-template-columns: 280px minmax(0, 1fr);
   overflow: hidden;
 }
 
@@ -77,8 +77,11 @@ button { cursor: pointer; }
 }
 
 .settings-panel {
-  border-right: 0;
-  border-left: 1px solid var(--line);
+  width: min(980px, calc(100vw - 32px));
+  height: min(760px, calc(100vh - 32px));
+  border: 1px solid var(--line);
+  border-radius: 10px;
+  box-shadow: 0 24px 80px rgba(15, 23, 42, 0.28);
   display: flex;
   flex-direction: column;
   gap: 14px;
@@ -93,7 +96,7 @@ button { cursor: pointer; }
 
 .brand span, .topbar span, small { display: block; color: var(--muted); font-size: 12px; }
 
-.new-chat, .logout-button, .empty button, .setting-form button {
+.new-chat, .settings-button, .logout-button, .empty button, .setting-form button {
   width: 100%;
   display: flex;
   align-items: center;
@@ -107,15 +110,28 @@ button { cursor: pointer; }
   font-weight: 700;
 }
 
-.logout-button { margin-top: auto; background: white; color: var(--text); }
+.settings-button {
+  margin-top: auto;
+  background: white;
+  color: var(--text);
+}
+
+.logout-button {
+  margin-top: 8px;
+  background: white;
+  color: var(--text);
+}
+
 .sidebar { display: flex; flex-direction: column; }
 
 .conversation-list {
   display: grid;
+  align-content: start;
   gap: 6px;
   margin: 18px 0;
+  flex: 1;
   min-height: 0;
-  overflow: hidden;
+  overflow-y: auto;
 }
 
 .conversation-list button {
@@ -247,10 +263,22 @@ button { cursor: pointer; }
   color: white;
 }
 
+.settings-dialog-backdrop {
+  position: fixed;
+  inset: 0;
+  z-index: 50;
+  display: grid;
+  place-items: center;
+  padding: 16px;
+  background: rgba(15, 23, 42, 0.42);
+}
+
 .settings-panel h3 { display: flex; gap: 8px; align-items: center; margin: 0 0 12px; font-size: 15px; }
 .settings-title {
-  display: grid;
-  gap: 3px;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
 }
 
 .settings-title strong {
@@ -258,9 +286,22 @@ button { cursor: pointer; }
   font-size: 18px;
 }
 
-.settings-menu {
+.settings-close {
+  width: 34px;
+  height: 34px;
   display: grid;
-  gap: 6px;
+  place-items: center;
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  background: white;
+  color: var(--text);
+}
+
+.settings-menu {
+  display: flex;
+  gap: 8px;
+  overflow-x: auto;
+  padding-bottom: 2px;
 }
 
 .settings-menu button {
@@ -275,6 +316,7 @@ button { cursor: pointer; }
   color: var(--text);
   font-weight: 700;
   text-align: left;
+  white-space: nowrap;
 }
 
 .settings-menu button:hover {
@@ -740,7 +782,7 @@ input, .setting-form textarea {
 
 @media (max-width: 980px) {
   .app-shell { grid-template-columns: 240px minmax(0, 1fr); }
-  .settings-panel { display: none; }
+  .settings-panel { width: min(720px, calc(100vw - 24px)); }
 }
 
 @media (max-width: 720px) {

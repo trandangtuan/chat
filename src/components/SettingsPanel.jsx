@@ -1,5 +1,5 @@
 import React, { useState } from 'react'
-import { AlertTriangle, ArrowLeft, Boxes, Brain, Coins, ListChecks, Plus, ServerCog, Trash2 } from 'lucide-react'
+import { AlertTriangle, ArrowLeft, Boxes, Brain, Coins, ListChecks, Plus, ServerCog, Trash2, X } from 'lucide-react'
 
 export function SettingsPanel({
   mcpServers,
@@ -28,7 +28,8 @@ export function SettingsPanel({
   onRefreshMcpTools,
   onAddSkill,
   onAddRule,
-  onAddMemory
+  onAddMemory,
+  onClose
 }) {
   const [activeSetting, setActiveSetting] = useState('mcp')
   const [mcpView, setMcpView] = useState('list')
@@ -45,28 +46,32 @@ export function SettingsPanel({
   }
 
   return (
-    <aside className="settings-panel">
-      <div className="settings-title">
-        <strong>Settings</strong>
-        <small>Workspace controls</small>
-      </div>
-      <SettingsMenu activeSetting={activeSetting} onSelect={(setting) => {
-        setActiveSetting(setting)
-        setMcpView('list')
-      }} />
-      {settingsError && <div className="settings-error">{settingsError}</div>}
+    <div className="settings-dialog-backdrop" role="presentation" onMouseDown={onClose}>
+      <aside className="settings-panel" role="dialog" aria-modal="true" aria-labelledby="settings-title" onMouseDown={(event) => event.stopPropagation()}>
+        <div className="settings-title">
+          <div>
+            <strong id="settings-title">Settings</strong>
+            <small>Workspace controls</small>
+          </div>
+          <button className="settings-close" type="button" onClick={onClose} aria-label="Close settings"><X size={18} /></button>
+        </div>
+        <SettingsMenu activeSetting={activeSetting} onSelect={(setting) => {
+          setActiveSetting(setting)
+          setMcpView('list')
+        }} />
+        {settingsError && <div className="settings-error">{settingsError}</div>}
 
-      <div className="settings-content">
-        {activeSetting === 'mcp' && (mcpView === 'add' ? (
-          <NewPluginForm
-            mcpForm={mcpForm}
-            onUpdate={updateMcpForm}
-            onSubmit={submitMcpServer}
-            onBack={() => setMcpView('list')}
-          />
-        ) : (
-          <McpServerList servers={mcpServers} onAdd={() => setMcpView('add')} onConnect={onConnectMcpServer} onDelete={onDeleteMcpServer} onRefreshTools={onRefreshMcpTools} />
-        ))}
+        <div className="settings-content">
+          {activeSetting === 'mcp' && (mcpView === 'add' ? (
+            <NewPluginForm
+              mcpForm={mcpForm}
+              onUpdate={updateMcpForm}
+              onSubmit={submitMcpServer}
+              onBack={() => setMcpView('list')}
+            />
+          ) : (
+            <McpServerList servers={mcpServers} onAdd={() => setMcpView('add')} onConnect={onConnectMcpServer} onDelete={onDeleteMcpServer} onRefreshTools={onRefreshMcpTools} />
+          ))}
 
         {activeSetting === 'skills' && (
           <SettingsSection icon={<Boxes size={17} />} title="Skill settings">
@@ -101,13 +106,14 @@ export function SettingsPanel({
           </SettingsSection>
         )}
 
-        {activeSetting === 'tokens' && (
-          <SettingsSection icon={<Coins size={17} />} title="Token usage">
-            <TokenUsagePanel tokenUsage={tokenUsage} />
-          </SettingsSection>
-        )}
-      </div>
-    </aside>
+          {activeSetting === 'tokens' && (
+            <SettingsSection icon={<Coins size={17} />} title="Token usage">
+              <TokenUsagePanel tokenUsage={tokenUsage} />
+            </SettingsSection>
+          )}
+        </div>
+      </aside>
+    </div>
   )
 }
 

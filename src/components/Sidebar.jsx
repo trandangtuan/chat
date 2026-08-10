@@ -1,7 +1,7 @@
 import React from 'react'
-import { ChevronRight, LogOut, MessageSquare, Plus, Sparkles } from 'lucide-react'
+import { ChevronRight, LogOut, MessageSquare, Plus, Settings, Sparkles } from 'lucide-react'
 
-export function Sidebar({ user, conversations, activeId, onCreateConversation, onSelectConversation, onLogout }) {
+export function Sidebar({ user, conversations, activeId, onCreateConversation, onSelectConversation, onOpenSettings, onLogout }) {
   return (
     <aside className="sidebar">
       <div className="brand">
@@ -18,6 +18,7 @@ export function Sidebar({ user, conversations, activeId, onCreateConversation, o
           </button>
         ))}
       </nav>
+      <button className="settings-button" onClick={onOpenSettings}><Settings size={16} /> Settings</button>
       <button className="logout-button" onClick={onLogout}><LogOut size={16} /> Sign out</button>
     </aside>
   )
