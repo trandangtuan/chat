@@ -593,30 +593,20 @@ function buildLiveChatWidgetScript(defaultShareKey) {
   root.id = 'tdshift-live-chat'
   document.body.appendChild(root)
   var style = document.createElement('style')
-  style.textContent = '#tdshift-live-chat{position:fixed;z-index:2147483647;right:18px;bottom:18px;font-family:Inter,ui-sans-serif,system-ui,-apple-system,BlinkMacSystemFont,"Segoe UI",sans-serif;color:#111827}#tdshift-live-chat *{box-sizing:border-box}#tdshift-live-chat .tlc-mini{display:flex;gap:8px;width:min(360px,calc(100vw - 36px));padding:10px;border:1px solid #dfe3e8;border-radius:10px;background:#fff;box-shadow:0 18px 55px rgba(15,23,42,.22)}#tdshift-live-chat input,#tdshift-live-chat textarea{width:100%;border:1px solid #dfe3e8;border-radius:8px;padding:10px 11px;font:inherit}#tdshift-live-chat button{border:0;border-radius:8px;background:#2563eb;color:#fff;font:inherit;font-weight:700;cursor:pointer}#tdshift-live-chat .tlc-mini button{width:42px}#tdshift-live-chat .tlc-panel{display:grid;grid-template-rows:auto 1fr auto;width:min(390px,calc(100vw - 36px));height:min(620px,calc(100vh - 36px));border:1px solid #dfe3e8;border-radius:12px;background:#fff;box-shadow:0 24px 80px rgba(15,23,42,.28);overflow:hidden}#tdshift-live-chat .tlc-head{display:flex;align-items:center;justify-content:space-between;gap:12px;padding:13px 14px;border-bottom:1px solid #dfe3e8}#tdshift-live-chat .tlc-head strong{display:block;font-size:14px}#tdshift-live-chat .tlc-head small{display:block;color:#667085;font-size:12px}#tdshift-live-chat .tlc-close{width:32px;height:32px;background:#f8fafc;color:#111827;border:1px solid #dfe3e8}#tdshift-live-chat .tlc-body{display:flex;flex-direction:column;gap:10px;min-height:0;overflow-y:auto;padding:14px;background:#f8fafc}#tdshift-live-chat .tlc-msg{max-width:86%;padding:9px 10px;border-radius:10px;font-size:14px;line-height:1.4;white-space:pre-wrap;overflow-wrap:anywhere}#tdshift-live-chat .tlc-user{align-self:flex-end;background:#2563eb;color:#fff}#tdshift-live-chat .tlc-assistant{align-self:flex-start;background:#fff;border:1px solid #dfe3e8}#tdshift-live-chat .tlc-form{display:grid;grid-template-columns:1fr 44px;gap:8px;padding:12px;border-top:1px solid #dfe3e8}#tdshift-live-chat .tlc-form textarea{height:44px;min-height:44px;max-height:110px;resize:none}#tdshift-live-chat .tlc-form button{height:44px}'
+  style.textContent = '#tdshift-live-chat{position:fixed;z-index:2147483647;right:22px;bottom:22px;font-family:Inter,ui-sans-serif,system-ui,-apple-system,BlinkMacSystemFont,"Segoe UI",sans-serif;color:#101828}#tdshift-live-chat *{box-sizing:border-box;letter-spacing:0}#tdshift-live-chat button,#tdshift-live-chat input,#tdshift-live-chat textarea{font:inherit}#tdshift-live-chat button{cursor:pointer}#tdshift-live-chat .tlc-launcher{min-width:196px;min-height:58px;display:flex;align-items:center;gap:11px;border:0;border-radius:999px;padding:9px 18px 9px 10px;background:#155eef;color:#fff;box-shadow:0 18px 44px rgba(21,94,239,.34),0 4px 14px rgba(15,23,42,.2);font-weight:800}#tdshift-live-chat .tlc-launcher:hover{background:#0f4cd2;transform:translateY(-1px)}#tdshift-live-chat .tlc-launcher-icon{width:40px;height:40px;display:grid;place-items:center;border-radius:999px;background:rgba(255,255,255,.18);font-size:20px}#tdshift-live-chat .tlc-launcher-copy{display:grid;gap:1px;text-align:left}#tdshift-live-chat .tlc-launcher-copy small{color:rgba(255,255,255,.78);font-size:12px;font-weight:700}#tdshift-live-chat .tlc-panel{display:grid;grid-template-rows:auto 1fr auto;width:min(410px,calc(100vw - 32px));height:min(660px,calc(100vh - 32px));border:1px solid rgba(255,255,255,.7);border-radius:18px;background:#fff;box-shadow:0 28px 90px rgba(15,23,42,.32);overflow:hidden}#tdshift-live-chat .tlc-head{display:flex;align-items:center;justify-content:space-between;gap:12px;padding:16px 16px;background:linear-gradient(135deg,#155eef,#06b6d4);color:#fff}#tdshift-live-chat .tlc-brand{display:flex;align-items:center;gap:11px;min-width:0}#tdshift-live-chat .tlc-avatar{width:40px;height:40px;display:grid;place-items:center;border-radius:12px;background:rgba(255,255,255,.18);font-size:20px}#tdshift-live-chat .tlc-head strong{display:block;font-size:15px;line-height:1.2}#tdshift-live-chat .tlc-head small{display:flex;align-items:center;gap:6px;color:rgba(255,255,255,.82);font-size:12px;font-weight:700}#tdshift-live-chat .tlc-dot{width:7px;height:7px;border-radius:99px;background:#22c55e;box-shadow:0 0 0 3px rgba(34,197,94,.22)}#tdshift-live-chat .tlc-close{width:34px;height:34px;border:1px solid rgba(255,255,255,.3);border-radius:10px;background:rgba(255,255,255,.16);color:#fff;font-size:20px;line-height:1}#tdshift-live-chat .tlc-body{display:flex;flex-direction:column;gap:10px;min-height:0;overflow-y:auto;padding:16px;background:#f4f7fb}#tdshift-live-chat .tlc-msg{max-width:86%;padding:10px 12px;border-radius:14px;font-size:14px;line-height:1.45;white-space:pre-wrap;overflow-wrap:anywhere;box-shadow:0 1px 2px rgba(15,23,42,.06)}#tdshift-live-chat .tlc-user{align-self:flex-end;border-bottom-right-radius:5px;background:#155eef;color:#fff}#tdshift-live-chat .tlc-assistant{align-self:flex-start;border-bottom-left-radius:5px;background:#fff;border:1px solid #e4e7ec;color:#101828}#tdshift-live-chat .tlc-form{display:grid;grid-template-columns:1fr 46px;gap:9px;padding:12px;background:#fff;border-top:1px solid #eaecf0}#tdshift-live-chat .tlc-form textarea{width:100%;height:46px;min-height:46px;max-height:112px;border:1px solid #d0d5dd;border-radius:12px;padding:12px 13px;background:#fff;color:#101828;resize:none;outline:none}#tdshift-live-chat .tlc-form textarea:focus{border-color:#155eef;box-shadow:0 0 0 3px rgba(21,94,239,.14)}#tdshift-live-chat .tlc-form button{height:46px;border:0;border-radius:12px;background:#155eef;color:#fff;font-weight:900;font-size:18px}#tdshift-live-chat .tlc-form button:hover{background:#0f4cd2}@media(max-width:520px){#tdshift-live-chat{right:12px;bottom:12px}#tdshift-live-chat .tlc-launcher{min-width:176px}#tdshift-live-chat .tlc-panel{width:calc(100vw - 24px);height:min(620px,calc(100vh - 24px))}}'
   document.head.appendChild(style)
 
   function render() {
     root.innerHTML = ''
-    if (!expanded && !messages.length) {
-      var mini = document.createElement('form')
-      mini.className = 'tlc-mini'
-      mini.innerHTML = '<input placeholder="Chat with us" aria-label="Chat message"><button type="submit">➜</button>'
-      mini.onsubmit = function (event) {
-        event.preventDefault()
-        var input = mini.querySelector('input')
-        send(input.value)
-        input.value = ''
-      }
-      root.appendChild(mini)
+    if (!expanded) {
+      root.appendChild(createLauncher(messages.length ? 'Continue chat' : 'Chat with us', messages.length ? 'We saved your conversation' : 'Ask anything'))
       return
     }
 
-    expanded = true
     var panel = document.createElement('section')
     panel.className = 'tlc-panel'
-    panel.innerHTML = '<div class="tlc-head"><div><strong>Live chat</strong><small>TDShift AI assistant</small></div><button class="tlc-close" type="button" aria-label="Close">×</button></div><div class="tlc-body"></div><form class="tlc-form"><textarea placeholder="Type a message" aria-label="Chat message"></textarea><button type="submit">➜</button></form>'
-    panel.querySelector('.tlc-close').onclick = function () { expanded = false; root.innerHTML = '<button class="tlc-mini" type="button" style="justify-content:center;font-weight:700">Open chat</button>'; root.firstChild.onclick = function(){ expanded = true; render() } }
+    panel.innerHTML = '<div class="tlc-head"><div class="tlc-brand"><div class="tlc-avatar">✦</div><div><strong>Live chat</strong><small><span class="tlc-dot"></span>AI assistant online</small></div></div><button class="tlc-close" type="button" aria-label="Close">×</button></div><div class="tlc-body"></div><form class="tlc-form"><textarea placeholder="Type your message" aria-label="Chat message"></textarea><button type="submit" aria-label="Send">➜</button></form>'
+    panel.querySelector('.tlc-close').onclick = function () { expanded = false; render() }
     var body = panel.querySelector('.tlc-body')
     messages.forEach(function (message) {
       var bubble = document.createElement('div')
@@ -633,6 +623,16 @@ function buildLiveChatWidgetScript(defaultShareKey) {
     }
     root.appendChild(panel)
     body.scrollTop = body.scrollHeight
+  }
+
+  function createLauncher(title, subtitle) {
+    var launcher = document.createElement('button')
+    launcher.className = 'tlc-launcher'
+    launcher.type = 'button'
+    launcher.setAttribute('aria-label', 'Open live chat')
+    launcher.innerHTML = '<span class="tlc-launcher-icon">✦</span><span class="tlc-launcher-copy"><strong>' + title + '</strong><small>' + subtitle + '</small></span>'
+    launcher.onclick = function () { expanded = true; render() }
+    return launcher
   }
 
   async function ensureSession() {
@@ -653,8 +653,8 @@ function buildLiveChatWidgetScript(defaultShareKey) {
   async function send(content) {
     content = String(content || '').trim()
     if (!content) return
-    expanded = true
     await ensureSession()
+    expanded = true
     var assistant = { role: 'assistant', content: 'Thinking...' }
     messages.push({ role: 'user', content: content }, assistant)
     render()

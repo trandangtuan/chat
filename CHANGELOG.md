@@ -17,6 +17,7 @@ Time zone: Asia/Ho_Chi_Minh (UTC+07:00).
 - Move Settings into a sidebar button above Sign out and show settings views in a dialog.
 - Add skill descriptions and select relevant skills by name/description before injecting detailed skill instructions.
 - Add shareable live chat embeds with public widget sessions that reuse the owner's MCP servers, skills, rules, and memory.
+- Redesign the live chat widget launcher and panel for clearer modern UX across external websites.
 
 ## 2026-08-09 16:17:53 +0700 - `d8c89e3`
 
