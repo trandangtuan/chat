@@ -23,11 +23,15 @@ function App() {
   const [memories, setMemories] = useState([])
   const [tokenUsage, setTokenUsage] = useState({ usage: [], summary: [] })
   const [liveChatShares, setLiveChatShares] = useState([])
+  const [websiteSources, setWebsiteSources] = useState([])
+  const [websitePages, setWebsitePages] = useState([])
+  const [activeWebsiteSourceId, setActiveWebsiteSourceId] = useState(null)
   const [mcpForm, setMcpForm] = useState(createEmptyMcpForm())
   const [liveChatName, setLiveChatName] = useState('')
   const [liveChatOrigin, setLiveChatOrigin] = useState('')
   const [liveChatIconUrl, setLiveChatIconUrl] = useState('')
   const [liveChatIconFile, setLiveChatIconFile] = useState(null)
+  const [websiteUrl, setWebsiteUrl] = useState('')
   const [skillName, setSkillName] = useState('')
   const [skillDescription, setSkillDescription] = useState('')
   const [skillInstructions, setSkillInstructions] = useState('')
@@ -58,14 +62,15 @@ function App() {
     try {
       const identity = await api.get('/api/me')
       setUser(identity.user)
-      const [conversationData, mcpData, skillData, ruleData, memoryData, tokenData, liveChatData] = await Promise.all([
+      const [conversationData, mcpData, skillData, ruleData, memoryData, tokenData, liveChatData, websiteData] = await Promise.all([
         api.get('/api/conversations'),
         api.get('/api/mcp-servers'),
         api.get('/api/skills'),
         api.get('/api/rules'),
         api.get('/api/memories'),
         api.get('/api/usage/token-history?limit=50'),
-        api.get('/api/live-chat-shares')
+        api.get('/api/live-chat-shares'),
+        api.get('/api/website-sources')
       ])
       setConversations(conversationData.conversations)
       setActiveId(conversationData.conversations[0]?.id || null)
@@ -75,6 +80,7 @@ function App() {
       setMemories(memoryData.memories)
       setTokenUsage(tokenData)
       setLiveChatShares(liveChatData.shares)
+      setWebsiteSources(websiteData.sources)
     } catch {
       setUser(null)
     } finally {
@@ -265,6 +271,61 @@ function App() {
     setLiveChatShares((current) => current.filter((share) => share.id !== shareId))
   }
 
+  async function addWebsiteSource(event) {
+    event.preventDefault()
+    const url = websiteUrl.trim()
+    if (!url) return
+    setSettingsError('')
+    try {
+      const data = await api.post('/api/website-sources', { url })
+      setWebsiteSources((current) => [data.source, ...current])
+      setWebsiteUrl('')
+    } catch {
+      setSettingsError('Could not index this website. Check that it has a readable sitemap.xml.')
+    }
+  }
+
+  async function refreshWebsiteSource(sourceId) {
+    setSettingsError('')
+    try {
+      const data = await api.post(`/api/website-sources/${sourceId}/refresh`, {})
+      setWebsiteSources((current) => current.map((source) => source.id === sourceId ? data.source : source))
+    } catch {
+      setSettingsError('Could not refresh this website source.')
+    }
+  }
+
+  async function deleteWebsiteSource(sourceId) {
+    setSettingsError('')
+    const response = await fetch(`/api/website-sources/${sourceId}`, { method: 'DELETE', credentials: 'include' })
+    if (!response.ok) {
+      setSettingsError('Could not delete this website source.')
+      return
+    }
+    setWebsiteSources((current) => current.filter((source) => source.id !== sourceId))
+    if (activeWebsiteSourceId === sourceId) {
+      setActiveWebsiteSourceId(null)
+      setWebsitePages([])
+    }
+  }
+
+  async function viewWebsiteSource(sourceId) {
+    setSettingsError('')
+    setActiveWebsiteSourceId(sourceId)
+    try {
+      const data = await api.get(`/api/website-sources/${sourceId}/pages?limit=200`)
+      setWebsitePages(data.pages)
+    } catch {
+      setWebsitePages([])
+      setSettingsError('Could not load indexed pages for this website.')
+    }
+  }
+
+  function closeWebsiteSourceView() {
+    setActiveWebsiteSourceId(null)
+    setWebsitePages([])
+  }
+
   async function logout() {
     await fetch('/auth/logout', { method: 'POST', credentials: 'include' })
     window.location.reload()
@@ -307,6 +368,9 @@ function App() {
           memories={memories}
           tokenUsage={tokenUsage}
           liveChatShares={liveChatShares}
+          websiteSources={websiteSources}
+          websitePages={websitePages}
+          activeWebsiteSourceId={activeWebsiteSourceId}
           settingsError={settingsError}
           mcpForm={mcpForm}
           skillName={skillName}
@@ -320,6 +384,7 @@ function App() {
           liveChatOrigin={liveChatOrigin}
           liveChatIconUrl={liveChatIconUrl}
           liveChatIconFile={liveChatIconFile}
+          websiteUrl={websiteUrl}
           onClose={() => setSettingsOpen(false)}
           onMcpFormChange={setMcpForm}
           onSkillNameChange={setSkillName}
@@ -333,6 +398,7 @@ function App() {
           onLiveChatOriginChange={setLiveChatOrigin}
           onLiveChatIconUrlChange={setLiveChatIconUrl}
           onLiveChatIconFileChange={setLiveChatIconFile}
+          onWebsiteUrlChange={setWebsiteUrl}
           onAddMcpServer={addMcpServer}
           onConnectMcpServer={connectMcpServer}
           onDeleteMcpServer={deleteMcpServer}
@@ -342,6 +408,11 @@ function App() {
           onAddMemory={addMemory}
           onAddLiveChatShare={addLiveChatShare}
           onDeleteLiveChatShare={deleteLiveChatShare}
+          onAddWebsiteSource={addWebsiteSource}
+          onRefreshWebsiteSource={refreshWebsiteSource}
+          onDeleteWebsiteSource={deleteWebsiteSource}
+          onViewWebsiteSource={viewWebsiteSource}
+          onCloseWebsiteSourceView={closeWebsiteSourceView}
         />
       )}
     </div>

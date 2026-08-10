@@ -12,6 +12,7 @@ import { db } from './db.js'
 import { authRoutes, requireUser } from './auth.js'
 import { generateAssistantReply, streamAssistantReply } from './ai.js'
 import { listMcpTools, refreshMcpToolsForServer } from './mcp.js'
+import { buildWebsiteContextBlock, indexWebsiteSource, normalizeWebsiteUrl, searchWebsiteContext } from './websiteRag.js'
 
 const app = express()
 const publicDir = path.resolve('public')
@@ -80,7 +81,8 @@ app.post('/api/conversations/:id/messages', requireUser, async (req, res, next) 
     const mcpServers = listMcpServers(req.user.id)
     const rules = listRules(req.user.id)
     const memories = listMemories(req.user.id)
-    const assistant = await generateAssistantReply({ user: req.user, messages, skills, mcpServers, rules, memories })
+    const websiteContext = await buildWebsiteContext(req.user.id, content)
+    const assistant = await generateAssistantReply({ user: req.user, messages, skills, mcpServers, rules, memories, websiteContext })
     const assistantMessageId = nanoid()
     db.prepare('INSERT INTO messages (id, conversation_id, user_id, role, content) VALUES (?, ?, ?, ?, ?)')
       .run(assistantMessageId, req.params.id, req.user.id, 'assistant', assistant.content)
@@ -133,6 +135,7 @@ app.post('/api/conversations/:id/messages/stream', requireUser, async (req, res,
     const mcpServers = listMcpServers(req.user.id)
     const rules = listRules(req.user.id)
     const memories = listMemories(req.user.id)
+    const websiteContext = await buildWebsiteContext(req.user.id, content)
     const assistant = await streamAssistantReply({
       user: req.user,
       messages,
@@ -140,6 +143,7 @@ app.post('/api/conversations/:id/messages/stream', requireUser, async (req, res,
       mcpServers,
       rules,
       memories,
+      websiteContext,
       onDelta: async (delta) => writeSse(res, 'delta', { delta })
     })
 
@@ -341,6 +345,85 @@ app.post('/api/memories', requireUser, (req, res) => {
   res.status(201).json({ memory: db.prepare('SELECT * FROM memories WHERE id = ?').get(id) })
 })
 
+app.get('/api/website-sources', requireUser, (req, res) => {
+  res.json({ sources: listWebsiteSources(req.user.id) })
+})
+
+app.get('/api/website-sources/:id/pages', requireUser, (req, res) => {
+  const source = db.prepare('SELECT id FROM website_sources WHERE id = ? AND user_id = ?').get(req.params.id, req.user.id)
+  if (!source) return res.status(404).json({ error: 'WEBSITE_SOURCE_NOT_FOUND' })
+  const limit = Math.min(Number(req.query.limit || 100), 500)
+  const pages = db.prepare(`
+    SELECT id, url, title, substr(content, 1, 900) AS preview, length(content) AS contentLength, created_at
+    FROM website_pages
+    WHERE source_id = ? AND user_id = ?
+    ORDER BY title ASC
+    LIMIT ?
+  `).all(req.params.id, req.user.id, limit)
+  res.json({ pages })
+})
+
+app.post('/api/website-sources', requireUser, async (req, res, next) => {
+  try {
+    const payload = z.object({
+      url: z.string().min(3).max(500),
+      enabled: z.boolean().default(true)
+    }).parse(req.body)
+    const id = nanoid()
+    const url = normalizeWebsiteUrl(payload.url)
+    db.prepare(`
+      INSERT INTO website_sources (id, user_id, url, status, enabled)
+      VALUES (?, ?, ?, ?, ?)
+    `).run(id, req.user.id, url, 'indexing', payload.enabled ? 1 : 0)
+
+    try {
+      const result = await indexWebsiteSource({ userId: req.user.id, sourceId: id, url })
+      db.prepare(`
+        UPDATE website_sources
+        SET status = ?, page_count = ?, error = NULL, updated_at = CURRENT_TIMESTAMP
+        WHERE id = ? AND user_id = ?
+      `).run('ready', result.indexed || 0, id, req.user.id)
+    } catch (error) {
+      db.prepare(`
+        UPDATE website_sources
+        SET status = ?, error = ?, updated_at = CURRENT_TIMESTAMP
+        WHERE id = ? AND user_id = ?
+      `).run('error', error.message.slice(0, 500), id, req.user.id)
+    }
+
+    res.status(201).json({ source: normalizeWebsiteSource(db.prepare('SELECT * FROM website_sources WHERE id = ? AND user_id = ?').get(id, req.user.id)) })
+  } catch (error) {
+    next(error)
+  }
+})
+
+app.post('/api/website-sources/:id/refresh', requireUser, async (req, res, next) => {
+  try {
+    const source = db.prepare('SELECT * FROM website_sources WHERE id = ? AND user_id = ?').get(req.params.id, req.user.id)
+    if (!source) return res.status(404).json({ error: 'WEBSITE_SOURCE_NOT_FOUND' })
+    db.prepare('UPDATE website_sources SET status = ?, error = NULL, updated_at = CURRENT_TIMESTAMP WHERE id = ? AND user_id = ?')
+      .run('indexing', source.id, req.user.id)
+    const result = await indexWebsiteSource({ userId: req.user.id, sourceId: source.id, url: source.url })
+    db.prepare(`
+      UPDATE website_sources
+      SET status = ?, page_count = ?, error = NULL, updated_at = CURRENT_TIMESTAMP
+      WHERE id = ? AND user_id = ?
+    `).run('ready', result.indexed || 0, source.id, req.user.id)
+    res.json({ source: normalizeWebsiteSource(db.prepare('SELECT * FROM website_sources WHERE id = ? AND user_id = ?').get(source.id, req.user.id)) })
+  } catch (error) {
+    db.prepare('UPDATE website_sources SET status = ?, error = ?, updated_at = CURRENT_TIMESTAMP WHERE id = ? AND user_id = ?')
+      .run('error', error.message.slice(0, 500), req.params.id, req.user.id)
+    next(error)
+  }
+})
+
+app.delete('/api/website-sources/:id', requireUser, (req, res) => {
+  const result = db.prepare('DELETE FROM website_sources WHERE id = ? AND user_id = ?').run(req.params.id, req.user.id)
+  if (result.changes === 0) return res.status(404).json({ error: 'WEBSITE_SOURCE_NOT_FOUND' })
+  db.prepare('DELETE FROM website_pages_fts WHERE source_id = ? AND user_id = ?').run(req.params.id, req.user.id)
+  res.json({ ok: true })
+})
+
 app.get('/api/usage/token-history', requireUser, (req, res) => {
   const limit = Math.min(Number(req.query.limit || 100), 500)
   const rows = db.prepare(`
@@ -463,6 +546,7 @@ app.post('/api/live-chat/:shareKey/sessions/:sessionId/messages/stream', async (
 
     const owner = db.prepare('SELECT id, email, name FROM users WHERE id = ?').get(share.user_id)
     const messages = listLiveChatMessages(session.id).map((message) => ({ role: message.role, content: message.content }))
+    const websiteContext = await buildWebsiteContext(share.user_id, content)
     const assistant = await streamAssistantReply({
       user: owner,
       messages,
@@ -470,6 +554,7 @@ app.post('/api/live-chat/:shareKey/sessions/:sessionId/messages/stream', async (
       mcpServers: listMcpServers(share.user_id),
       rules: listRules(share.user_id),
       memories: listMemories(share.user_id),
+      websiteContext,
       onDelta: async (delta) => writeSse(res, 'delta', { delta })
     })
     db.prepare('INSERT INTO live_chat_messages (id, session_id, role, content) VALUES (?, ?, ?, ?)')
@@ -529,6 +614,37 @@ function assertOwnsConversation(userId, conversationId) {
     const error = new Error('CONVERSATION_NOT_FOUND')
     error.status = 404
     throw error
+  }
+}
+
+async function buildWebsiteContext(userId, query) {
+  const sources = listWebsiteSources(userId).filter((source) => source.enabled && source.status === 'ready')
+  if (!sources.length) return ''
+  const matches = searchWebsiteContext({ userId, query, limit: 6 })
+  return buildWebsiteContextBlock(matches)
+}
+
+function listWebsiteSources(userId) {
+  return db.prepare(`
+    SELECT id, user_id, url, status, page_count, error, enabled, created_at, updated_at
+    FROM website_sources
+    WHERE user_id = ?
+    ORDER BY created_at DESC
+  `)
+    .all(userId)
+    .map(normalizeWebsiteSource)
+}
+
+function normalizeWebsiteSource(source) {
+  return {
+    id: source.id,
+    url: source.url,
+    status: source.status,
+    pageCount: source.page_count,
+    error: source.error,
+    enabled: Boolean(source.enabled),
+    created_at: source.created_at,
+    updated_at: source.updated_at
   }
 }
 

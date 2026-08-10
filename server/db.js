@@ -166,6 +166,37 @@ db.exec(`
     created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP
   );
 
+  CREATE TABLE IF NOT EXISTS website_sources (
+    id TEXT PRIMARY KEY,
+    user_id TEXT NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+    url TEXT NOT NULL,
+    status TEXT NOT NULL DEFAULT 'pending',
+    page_count INTEGER NOT NULL DEFAULT 0,
+    error TEXT,
+    enabled INTEGER NOT NULL DEFAULT 1,
+    created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    updated_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP
+  );
+
+  CREATE TABLE IF NOT EXISTS website_pages (
+    id TEXT PRIMARY KEY,
+    source_id TEXT NOT NULL REFERENCES website_sources(id) ON DELETE CASCADE,
+    user_id TEXT NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+    url TEXT NOT NULL,
+    title TEXT NOT NULL,
+    content TEXT NOT NULL,
+    created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP
+  );
+
+  CREATE VIRTUAL TABLE IF NOT EXISTS website_pages_fts USING fts5(
+    page_id UNINDEXED,
+    source_id UNINDEXED,
+    user_id UNINDEXED,
+    url UNINDEXED,
+    title,
+    content
+  );
+
   CREATE INDEX IF NOT EXISTS idx_token_usage_user_created_at
     ON token_usage (user_id, created_at);
 
@@ -180,6 +211,12 @@ db.exec(`
 
   CREATE INDEX IF NOT EXISTS idx_live_chat_messages_session
     ON live_chat_messages (session_id, created_at);
+
+  CREATE INDEX IF NOT EXISTS idx_website_sources_user
+    ON website_sources (user_id, enabled, updated_at);
+
+  CREATE INDEX IF NOT EXISTS idx_website_pages_source
+    ON website_pages (source_id, user_id);
 `)
 
 ensureColumn('mcp_servers', 'description', 'TEXT')
@@ -200,6 +237,10 @@ ensureColumn('mcp_oauth_states', 'redirect_uri', 'TEXT')
 ensureColumn('mcp_oauth_states', 'resource', 'TEXT')
 ensureColumn('skills', 'description', 'TEXT')
 ensureColumn('live_chat_shares', 'icon_url', 'TEXT')
+ensureColumn('website_sources', 'status', "TEXT NOT NULL DEFAULT 'pending'")
+ensureColumn('website_sources', 'page_count', 'INTEGER NOT NULL DEFAULT 0')
+ensureColumn('website_sources', 'error', 'TEXT')
+ensureColumn('website_sources', 'enabled', 'INTEGER NOT NULL DEFAULT 1')
 
 export function upsertUser(user) {
   db.prepare(`

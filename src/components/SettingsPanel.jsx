@@ -1,5 +1,5 @@
 import React, { useState } from 'react'
-import { AlertTriangle, ArrowLeft, Boxes, Brain, Coins, ListChecks, MessageCircle, Plus, ServerCog, Trash2, X } from 'lucide-react'
+import { AlertTriangle, ArrowLeft, Boxes, Brain, Coins, Globe2, ListChecks, MessageCircle, Plus, RefreshCw, ServerCog, Trash2, X } from 'lucide-react'
 
 export function SettingsPanel({
   mcpServers,
@@ -8,6 +8,9 @@ export function SettingsPanel({
   memories,
   tokenUsage,
   liveChatShares,
+  websiteSources,
+  websitePages,
+  activeWebsiteSourceId,
   settingsError,
   mcpForm,
   skillName,
@@ -21,6 +24,7 @@ export function SettingsPanel({
   liveChatOrigin,
   liveChatIconUrl,
   liveChatIconFile,
+  websiteUrl,
   onMcpFormChange,
   onSkillNameChange,
   onSkillDescriptionChange,
@@ -33,6 +37,7 @@ export function SettingsPanel({
   onLiveChatOriginChange,
   onLiveChatIconUrlChange,
   onLiveChatIconFileChange,
+  onWebsiteUrlChange,
   onAddMcpServer,
   onConnectMcpServer,
   onDeleteMcpServer,
@@ -42,6 +47,11 @@ export function SettingsPanel({
   onAddMemory,
   onAddLiveChatShare,
   onDeleteLiveChatShare,
+  onAddWebsiteSource,
+  onRefreshWebsiteSource,
+  onDeleteWebsiteSource,
+  onViewWebsiteSource,
+  onCloseWebsiteSourceView,
   onClose
 }) {
   const [activeSetting, setActiveSetting] = useState('mcp')
@@ -142,6 +152,26 @@ export function SettingsPanel({
               <LiveChatShareList shares={liveChatShares || []} onDelete={onDeleteLiveChatShare} />
             </SettingsSection>
           )}
+
+          {activeSetting === 'websites' && (
+            <SettingsSection icon={<Globe2 size={17} />} title="Website knowledge">
+              {activeWebsiteSourceId ? (
+                <WebsitePageView
+                  source={websiteSources.find((source) => source.id === activeWebsiteSourceId)}
+                  pages={websitePages || []}
+                  onBack={onCloseWebsiteSourceView}
+                />
+              ) : (
+                <>
+                  <form onSubmit={onAddWebsiteSource} className="setting-form">
+                    <input value={websiteUrl} onChange={(event) => onWebsiteUrlChange(event.target.value)} placeholder="smenubook.com" />
+                    <button><Plus size={16} /> Index website</button>
+                  </form>
+                  <WebsiteSourceList sources={websiteSources || []} onRefresh={onRefreshWebsiteSource} onDelete={onDeleteWebsiteSource} onView={onViewWebsiteSource} />
+                </>
+              )}
+            </SettingsSection>
+          )}
         </div>
       </aside>
     </div>
@@ -154,6 +184,7 @@ function SettingsMenu({ activeSetting, onSelect }) {
     { id: 'skills', label: 'Skills', icon: Boxes },
     { id: 'rules', label: 'Rules', icon: ListChecks },
     { id: 'memory', label: 'Memory', icon: Brain },
+    { id: 'websites', label: 'Websites', icon: Globe2 },
     { id: 'tokens', label: 'Token usage', icon: Coins },
     { id: 'live-chat', label: 'Live chat', icon: MessageCircle }
   ]
@@ -198,6 +229,52 @@ function LiveChatShareList({ shares, onDelete }) {
         </article>
       ))}
       {!shares.length && <small>No live chat shares yet</small>}
+    </div>
+  )
+}
+
+function WebsiteSourceList({ sources, onRefresh, onDelete, onView }) {
+  return (
+    <div className="website-source-list">
+      {sources.map((source) => (
+        <article key={source.id}>
+          <div>
+            <strong>{source.url}</strong>
+            <small>{source.status} · {source.pageCount || 0} pages</small>
+            {source.error && <p>{source.error}</p>}
+          </div>
+          <div className="server-actions">
+            <button className="refresh-tools" type="button" onClick={() => onView(source.id)}>View data</button>
+            <button className="refresh-tools" type="button" onClick={() => onRefresh(source.id)}><RefreshCw size={14} /> Refresh</button>
+            <button className="delete-server" type="button" onClick={() => onDelete(source.id)}><Trash2 size={14} /> Delete</button>
+          </div>
+        </article>
+      ))}
+      {!sources.length && <small>No website sources indexed yet</small>}
+    </div>
+  )
+}
+
+function WebsitePageView({ source, pages, onBack }) {
+  return (
+    <div className="website-page-view">
+      <div className="settings-heading light">
+        <button className="back-button light" type="button" onClick={onBack} aria-label="Back to website sources"><ArrowLeft size={17} /></button>
+        <div>
+          <h3>{source?.url || 'Indexed website'}</h3>
+          <small>{pages.length} indexed pages</small>
+        </div>
+      </div>
+      <div className="website-page-list">
+        {pages.map((page) => (
+          <article key={page.id}>
+            <a href={page.url} target="_blank" rel="noreferrer">{page.title || page.url}</a>
+            <small>{page.url} · {formatNumber(page.contentLength)} chars</small>
+            <p>{page.preview}</p>
+          </article>
+        ))}
+        {!pages.length && <small>No indexed pages found for this source</small>}
+      </div>
     </div>
   )
 }

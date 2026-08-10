@@ -1,8 +1,8 @@
 import { config } from './config.js'
 import { buildOpenRouterTools, executeOpenRouterTool } from './mcp.js'
 
-export async function generateAssistantReply({ user, messages, skills, mcpServers, rules, memories }) {
-  const request = await buildChatRequest({ user, messages, skills, mcpServers, rules, memories })
+export async function generateAssistantReply({ user, messages, skills, mcpServers, rules, memories, websiteContext = '' }) {
+  const request = await buildChatRequest({ user, messages, skills, mcpServers, rules, memories, websiteContext })
   if (!config.openrouterApiKey) {
     const content = buildLocalReply(request)
     return {
@@ -25,8 +25,8 @@ export async function generateAssistantReply({ user, messages, skills, mcpServer
   }
 }
 
-export async function streamAssistantReply({ user, messages, skills, mcpServers, rules, memories, onDelta }) {
-  const request = await buildChatRequest({ user, messages, skills, mcpServers, rules, memories })
+export async function streamAssistantReply({ user, messages, skills, mcpServers, rules, memories, websiteContext = '', onDelta }) {
+  const request = await buildChatRequest({ user, messages, skills, mcpServers, rules, memories, websiteContext })
   if (!config.openrouterApiKey) {
     const content = buildLocalReply(request)
     await onDelta(content)
@@ -83,7 +83,7 @@ export async function streamAssistantReply({ user, messages, skills, mcpServers,
   }
 }
 
-async function buildChatRequest({ user, messages, skills, mcpServers, rules = [], memories = [] }) {
+async function buildChatRequest({ user, messages, skills, mcpServers, rules = [], memories = [], websiteContext = '' }) {
   const enabledSkills = skills.filter((skill) => skill.enabled)
   const selectedSkills = await selectRelevantSkills({ messages, skills: enabledSkills })
   const enabledMcp = mcpServers.filter((server) => server.enabled)
@@ -96,6 +96,7 @@ async function buildChatRequest({ user, messages, skills, mcpServers, rules = []
     enabledMemories.length ? `User memory:\n${enabledMemories.map((memory) => `- ${memory.title}: ${memory.content}`).join('\n')}` : '',
     enabledSkills.length ? `Available user skills:\n${enabledSkills.map((skill) => `- ${skill.name}: ${skill.description || 'No description provided.'}`).join('\n')}` : '',
     selectedSkills.length ? `Selected skill instructions:\n${selectedSkills.map((skill) => `## ${skill.name}\n${skill.instructions}`).join('\n\n')}` : 'No user skill instructions were selected for this request.',
+    websiteContext ? `Retrieved website context:\n${websiteContext}` : '',
     enabledMcp.length ? `Available user MCP servers:\n${enabledMcp.map((server) => `- ${server.name} (${server.transport})`).join('\n')}` : '',
     'Do not claim you executed MCP tools unless the application provided tool results.'
   ].filter(Boolean).join('\n\n')
@@ -195,7 +196,7 @@ function buildLocalReply({ enabledSkills, enabledMcp, enabledRules, enabledMemor
 }
 
 async function createOpenRouterCompletion(request, stream, userId) {
-  const tools = userId ? buildOpenRouterTools(userId) : []
+  const tools = buildOpenRouterRequestTools(userId)
   const response = await fetch('https://openrouter.ai/api/v1/chat/completions', {
     method: 'POST',
     headers: openRouterHeaders(),
@@ -204,7 +205,8 @@ async function createOpenRouterCompletion(request, stream, userId) {
       messages: request.messages,
       temperature: 0.7,
       stream,
-      ...(tools.length ? { tools, tool_choice: 'auto' } : {})
+      tools,
+      tool_choice: 'auto'
     })
   })
 
@@ -220,9 +222,11 @@ async function createOpenRouterCompletion(request, stream, userId) {
 
   const toolMessages = []
   for (const toolCall of message.tool_calls) {
+    if (toolCall.type !== 'function' || !toolCall.function?.name?.startsWith('mcp_')) continue
     const content = await executeOpenRouterTool(userId, toolCall)
     toolMessages.push({ role: 'tool', tool_call_id: toolCall.id, content })
   }
+  if (!toolMessages.length) return completion
 
   const finalResponse = await fetch('https://openrouter.ai/api/v1/chat/completions', {
     method: 'POST',
@@ -230,7 +234,9 @@ async function createOpenRouterCompletion(request, stream, userId) {
     body: JSON.stringify({
       model: config.openrouterModel,
       messages: [...request.messages, message, ...toolMessages],
-      temperature: 0.7
+      temperature: 0.7,
+      tools,
+      tool_choice: 'auto'
     })
   })
   if (!finalResponse.ok) {
@@ -252,7 +258,9 @@ async function createOpenRouterStream(request) {
       messages: request.messages,
       temperature: 0.7,
       stream: true,
-      usage: { include: true }
+      usage: { include: true },
+      tools: buildOpenRouterRequestTools(),
+      tool_choice: 'auto'
     })
   })
 
@@ -263,6 +271,13 @@ async function createOpenRouterStream(request) {
   }
 
   return response
+}
+
+function buildOpenRouterRequestTools(userId) {
+  return [
+    { type: 'openrouter:web_search' },
+    ...(userId ? buildOpenRouterTools(userId) : [])
+  ]
 }
 
 function openRouterHeaders() {
