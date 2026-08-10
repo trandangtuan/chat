@@ -1,5 +1,7 @@
 import express from 'express'
 import crypto from 'node:crypto'
+import fs from 'node:fs'
+import path from 'node:path'
 import cors from 'cors'
 import cookieParser from 'cookie-parser'
 import helmet from 'helmet'
@@ -12,6 +14,9 @@ import { generateAssistantReply, streamAssistantReply } from './ai.js'
 import { listMcpTools, refreshMcpToolsForServer } from './mcp.js'
 
 const app = express()
+const publicDir = path.resolve('public')
+const liveChatIconDir = path.join(publicDir, 'uploads', 'live-chat-icons')
+fs.mkdirSync(liveChatIconDir, { recursive: true })
 
 app.use(helmet({
   contentSecurityPolicy: false,
@@ -362,7 +367,7 @@ app.get('/api/usage/token-history', requireUser, (req, res) => {
 
 app.get('/api/live-chat-shares', requireUser, (req, res) => {
   const shares = db.prepare(`
-    SELECT id, share_key, name, allowed_origin, enabled, created_at, updated_at
+    SELECT id, share_key, name, allowed_origin, icon_url, enabled, created_at, updated_at
     FROM live_chat_shares
     WHERE user_id = ?
     ORDER BY created_at DESC
@@ -370,18 +375,31 @@ app.get('/api/live-chat-shares', requireUser, (req, res) => {
   res.json({ shares })
 })
 
+app.post('/api/live-chat-icons', requireUser, readRawBody({ limit: 256 * 1024 }), (req, res) => {
+  const upload = parseSingleMultipartFile(req)
+  if (!upload) return res.status(400).json({ error: 'ICON_FILE_REQUIRED' })
+  if (upload.contentType !== 'image/png' || !isPng(upload.buffer)) {
+    return res.status(400).json({ error: 'PNG_ICON_REQUIRED' })
+  }
+  const filename = `${req.user.id.replace(/[^a-zA-Z0-9_-]/g, '_')}-${crypto.randomBytes(12).toString('hex')}.png`
+  const diskPath = path.join(liveChatIconDir, filename)
+  fs.writeFileSync(diskPath, upload.buffer)
+  res.status(201).json({ iconUrl: `${config.appUrl}/uploads/live-chat-icons/${filename}` })
+})
+
 app.post('/api/live-chat-shares', requireUser, (req, res) => {
   const payload = z.object({
     name: z.string().min(1).max(120),
-    allowedOrigin: z.string().max(300).optional().nullable()
+    allowedOrigin: z.string().max(300).optional().nullable(),
+    iconUrl: z.string().max(500).optional().nullable()
   }).parse(req.body)
   const id = nanoid()
   const shareKey = `lc_${crypto.randomBytes(18).toString('base64url')}`
   db.prepare(`
-    INSERT INTO live_chat_shares (id, user_id, share_key, name, allowed_origin)
-    VALUES (?, ?, ?, ?, ?)
-  `).run(id, req.user.id, shareKey, payload.name, payload.allowedOrigin || null)
-  const share = db.prepare('SELECT id, share_key, name, allowed_origin, enabled, created_at, updated_at FROM live_chat_shares WHERE id = ?').get(id)
+    INSERT INTO live_chat_shares (id, user_id, share_key, name, allowed_origin, icon_url)
+    VALUES (?, ?, ?, ?, ?, ?)
+  `).run(id, req.user.id, shareKey, payload.name, payload.allowedOrigin || null, payload.iconUrl || null)
+  const share = db.prepare('SELECT id, share_key, name, allowed_origin, icon_url, enabled, created_at, updated_at FROM live_chat_shares WHERE id = ?').get(id)
   res.status(201).json({ share: normalizeLiveChatShare(share) })
 })
 
@@ -407,7 +425,7 @@ app.post('/api/live-chat/:shareKey/session', (req, res) => {
     session = db.prepare('SELECT * FROM live_chat_sessions WHERE id = ?').get(id)
   }
   const messages = listLiveChatMessages(session.id)
-  res.json({ sessionId: session.id, visitorKey, messages, share: { name: share.name } })
+  res.json({ sessionId: session.id, visitorKey, messages, share: { name: share.name, iconUrl: share.icon_url } })
 })
 
 app.post('/api/live-chat/:shareKey/sessions/:sessionId/messages/stream', async (req, res, next) => {
@@ -481,6 +499,10 @@ app.post('/api/skills', requireUser, (req, res) => {
   res.status(201).json({ skill: db.prepare('SELECT * FROM skills WHERE id = ?').get(id) })
 })
 
+app.use('/uploads', express.static(path.join(publicDir, 'uploads'), {
+  immutable: true,
+  maxAge: '30d'
+}))
 app.use(express.static('dist'))
 app.get('*', (_req, res) => res.sendFile(new URL('../dist/index.html', import.meta.url).pathname))
 
@@ -554,6 +576,7 @@ function normalizeLiveChatShare(share) {
     shareKey: share.share_key,
     name: share.name,
     allowedOrigin: share.allowed_origin,
+    iconUrl: share.icon_url,
     enabled: Boolean(share.enabled),
     scriptUrl,
     scriptTag: `<script src="${scriptUrl}" defer></script>`,
@@ -588,24 +611,25 @@ function buildLiveChatWidgetScript(defaultShareKey) {
   var sessionId = ''
   var messages = []
   var expanded = false
+  var shareConfig = { name: 'Live chat', iconUrl: '' }
 
   var root = document.createElement('div')
   root.id = 'tdshift-live-chat'
   document.body.appendChild(root)
   var style = document.createElement('style')
-  style.textContent = '#tdshift-live-chat{position:fixed;z-index:2147483647;right:22px;bottom:22px;font-family:Inter,ui-sans-serif,system-ui,-apple-system,BlinkMacSystemFont,"Segoe UI",sans-serif;color:#101828}#tdshift-live-chat *{box-sizing:border-box;letter-spacing:0}#tdshift-live-chat button,#tdshift-live-chat input,#tdshift-live-chat textarea{font:inherit}#tdshift-live-chat button{cursor:pointer}#tdshift-live-chat .tlc-launcher{min-width:196px;min-height:58px;display:flex;align-items:center;gap:11px;border:0;border-radius:999px;padding:9px 18px 9px 10px;background:#155eef;color:#fff;box-shadow:0 18px 44px rgba(21,94,239,.34),0 4px 14px rgba(15,23,42,.2);font-weight:800}#tdshift-live-chat .tlc-launcher:hover{background:#0f4cd2;transform:translateY(-1px)}#tdshift-live-chat .tlc-launcher-icon{width:40px;height:40px;display:grid;place-items:center;border-radius:999px;background:rgba(255,255,255,.18);font-size:20px}#tdshift-live-chat .tlc-launcher-copy{display:grid;gap:1px;text-align:left}#tdshift-live-chat .tlc-launcher-copy small{color:rgba(255,255,255,.78);font-size:12px;font-weight:700}#tdshift-live-chat .tlc-panel{display:grid;grid-template-rows:auto 1fr auto;width:min(410px,calc(100vw - 32px));height:min(660px,calc(100vh - 32px));border:1px solid rgba(255,255,255,.7);border-radius:18px;background:#fff;box-shadow:0 28px 90px rgba(15,23,42,.32);overflow:hidden}#tdshift-live-chat .tlc-head{display:flex;align-items:center;justify-content:space-between;gap:12px;padding:16px 16px;background:linear-gradient(135deg,#155eef,#06b6d4);color:#fff}#tdshift-live-chat .tlc-brand{display:flex;align-items:center;gap:11px;min-width:0}#tdshift-live-chat .tlc-avatar{width:40px;height:40px;display:grid;place-items:center;border-radius:12px;background:rgba(255,255,255,.18);font-size:20px}#tdshift-live-chat .tlc-head strong{display:block;font-size:15px;line-height:1.2}#tdshift-live-chat .tlc-head small{display:flex;align-items:center;gap:6px;color:rgba(255,255,255,.82);font-size:12px;font-weight:700}#tdshift-live-chat .tlc-dot{width:7px;height:7px;border-radius:99px;background:#22c55e;box-shadow:0 0 0 3px rgba(34,197,94,.22)}#tdshift-live-chat .tlc-close{width:34px;height:34px;border:1px solid rgba(255,255,255,.3);border-radius:10px;background:rgba(255,255,255,.16);color:#fff;font-size:20px;line-height:1}#tdshift-live-chat .tlc-body{display:flex;flex-direction:column;gap:10px;min-height:0;overflow-y:auto;padding:16px;background:#f4f7fb}#tdshift-live-chat .tlc-msg{max-width:86%;padding:10px 12px;border-radius:14px;font-size:14px;line-height:1.45;white-space:pre-wrap;overflow-wrap:anywhere;box-shadow:0 1px 2px rgba(15,23,42,.06)}#tdshift-live-chat .tlc-user{align-self:flex-end;border-bottom-right-radius:5px;background:#155eef;color:#fff}#tdshift-live-chat .tlc-assistant{align-self:flex-start;border-bottom-left-radius:5px;background:#fff;border:1px solid #e4e7ec;color:#101828}#tdshift-live-chat .tlc-form{display:grid;grid-template-columns:1fr 46px;gap:9px;padding:12px;background:#fff;border-top:1px solid #eaecf0}#tdshift-live-chat .tlc-form textarea{width:100%;height:46px;min-height:46px;max-height:112px;border:1px solid #d0d5dd;border-radius:12px;padding:12px 13px;background:#fff;color:#101828;resize:none;outline:none}#tdshift-live-chat .tlc-form textarea:focus{border-color:#155eef;box-shadow:0 0 0 3px rgba(21,94,239,.14)}#tdshift-live-chat .tlc-form button{height:46px;border:0;border-radius:12px;background:#155eef;color:#fff;font-weight:900;font-size:18px}#tdshift-live-chat .tlc-form button:hover{background:#0f4cd2}@media(max-width:520px){#tdshift-live-chat{right:12px;bottom:12px}#tdshift-live-chat .tlc-launcher{min-width:176px}#tdshift-live-chat .tlc-panel{width:calc(100vw - 24px);height:min(620px,calc(100vh - 24px))}}'
+  style.textContent = '#tdshift-live-chat{position:fixed;z-index:2147483647;right:22px;bottom:22px;font-family:Inter,ui-sans-serif,system-ui,-apple-system,BlinkMacSystemFont,"Segoe UI",sans-serif;color:#101828}#tdshift-live-chat *{box-sizing:border-box;letter-spacing:0}#tdshift-live-chat button,#tdshift-live-chat input,#tdshift-live-chat textarea{font:inherit}#tdshift-live-chat button{cursor:pointer}#tdshift-live-chat .tlc-launcher{width:62px;height:62px;display:grid;place-items:center;border:0;border-radius:999px;padding:0;background:#155eef;color:#fff;box-shadow:0 18px 44px rgba(21,94,239,.34),0 4px 14px rgba(15,23,42,.2);font-size:24px;font-weight:900;overflow:hidden}#tdshift-live-chat .tlc-launcher:hover{background:#0f4cd2;transform:translateY(-1px)}#tdshift-live-chat .tlc-launcher img{width:100%;height:100%;object-fit:cover;display:block}#tdshift-live-chat .tlc-panel{display:grid;grid-template-rows:auto 1fr auto;width:min(410px,calc(100vw - 32px));height:min(660px,calc(100vh - 32px));border:1px solid rgba(255,255,255,.7);border-radius:18px;background:#fff;box-shadow:0 28px 90px rgba(15,23,42,.32);overflow:hidden}#tdshift-live-chat .tlc-head{display:flex;align-items:center;justify-content:space-between;gap:12px;padding:16px 16px;background:linear-gradient(135deg,#155eef,#06b6d4);color:#fff}#tdshift-live-chat .tlc-brand{display:flex;align-items:center;gap:11px;min-width:0}#tdshift-live-chat .tlc-avatar{width:40px;height:40px;display:grid;place-items:center;border-radius:12px;background:rgba(255,255,255,.18);font-size:20px;overflow:hidden}#tdshift-live-chat .tlc-avatar img{width:100%;height:100%;object-fit:cover;display:block}#tdshift-live-chat .tlc-head strong{display:block;font-size:15px;line-height:1.2}#tdshift-live-chat .tlc-head small{display:flex;align-items:center;gap:6px;color:rgba(255,255,255,.82);font-size:12px;font-weight:700}#tdshift-live-chat .tlc-dot{width:7px;height:7px;border-radius:99px;background:#22c55e;box-shadow:0 0 0 3px rgba(34,197,94,.22)}#tdshift-live-chat .tlc-close{width:34px;height:34px;border:1px solid rgba(255,255,255,.3);border-radius:10px;background:rgba(255,255,255,.16);color:#fff;font-size:20px;line-height:1}#tdshift-live-chat .tlc-body{display:flex;flex-direction:column;gap:10px;min-height:0;overflow-y:auto;padding:16px;background:#f4f7fb}#tdshift-live-chat .tlc-msg{max-width:86%;padding:10px 12px;border-radius:14px;font-size:14px;line-height:1.45;white-space:pre-wrap;overflow-wrap:anywhere;box-shadow:0 1px 2px rgba(15,23,42,.06)}#tdshift-live-chat .tlc-user{align-self:flex-end;border-bottom-right-radius:5px;background:#155eef;color:#fff}#tdshift-live-chat .tlc-assistant{align-self:flex-start;border-bottom-left-radius:5px;background:#fff;border:1px solid #e4e7ec;color:#101828}#tdshift-live-chat .tlc-form{display:grid;grid-template-columns:1fr 46px;gap:9px;padding:12px;background:#fff;border-top:1px solid #eaecf0}#tdshift-live-chat .tlc-form textarea{width:100%;height:46px;min-height:46px;max-height:112px;border:1px solid #d0d5dd;border-radius:12px;padding:12px 13px;background:#fff;color:#101828;resize:none;outline:none}#tdshift-live-chat .tlc-form textarea:focus{border-color:#155eef;box-shadow:0 0 0 3px rgba(21,94,239,.14)}#tdshift-live-chat .tlc-form button{height:46px;border:0;border-radius:12px;background:#155eef;color:#fff;font-weight:900;font-size:18px}#tdshift-live-chat .tlc-form button:hover{background:#0f4cd2}@media(max-width:520px){#tdshift-live-chat{right:12px;bottom:12px}#tdshift-live-chat .tlc-panel{width:calc(100vw - 24px);height:min(620px,calc(100vh - 24px))}}'
   document.head.appendChild(style)
 
   function render() {
     root.innerHTML = ''
     if (!expanded) {
-      root.appendChild(createLauncher(messages.length ? 'Continue chat' : 'Chat with us', messages.length ? 'We saved your conversation' : 'Ask anything'))
+      root.appendChild(createLauncher())
       return
     }
 
     var panel = document.createElement('section')
     panel.className = 'tlc-panel'
-    panel.innerHTML = '<div class="tlc-head"><div class="tlc-brand"><div class="tlc-avatar">✦</div><div><strong>Live chat</strong><small><span class="tlc-dot"></span>AI assistant online</small></div></div><button class="tlc-close" type="button" aria-label="Close">×</button></div><div class="tlc-body"></div><form class="tlc-form"><textarea placeholder="Type your message" aria-label="Chat message"></textarea><button type="submit" aria-label="Send">➜</button></form>'
+    panel.innerHTML = '<div class="tlc-head"><div class="tlc-brand"><div class="tlc-avatar">' + renderIconHtml() + '</div><div><strong>' + escapeHtml(shareConfig.name || 'Live chat') + '</strong><small><span class="tlc-dot"></span>AI assistant online</small></div></div><button class="tlc-close" type="button" aria-label="Close">×</button></div><div class="tlc-body"></div><form class="tlc-form"><textarea placeholder="Type your message" aria-label="Chat message"></textarea><button type="submit" aria-label="Send">➜</button></form>'
     panel.querySelector('.tlc-close').onclick = function () { expanded = false; render() }
     var body = panel.querySelector('.tlc-body')
     messages.forEach(function (message) {
@@ -625,14 +649,28 @@ function buildLiveChatWidgetScript(defaultShareKey) {
     body.scrollTop = body.scrollHeight
   }
 
-  function createLauncher(title, subtitle) {
+  function createLauncher() {
     var launcher = document.createElement('button')
     launcher.className = 'tlc-launcher'
     launcher.type = 'button'
     launcher.setAttribute('aria-label', 'Open live chat')
-    launcher.innerHTML = '<span class="tlc-launcher-icon">✦</span><span class="tlc-launcher-copy"><strong>' + title + '</strong><small>' + subtitle + '</small></span>'
+    launcher.innerHTML = renderIconHtml()
     launcher.onclick = function () { expanded = true; render() }
     return launcher
+  }
+
+  function renderIconHtml() {
+    return shareConfig.iconUrl ? '<img src="' + escapeAttribute(shareConfig.iconUrl) + '" alt="">' : '✦'
+  }
+
+  function escapeHtml(value) {
+    return String(value || '').replace(/[&<>"']/g, function (char) {
+      return ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' })[char]
+    })
+  }
+
+  function escapeAttribute(value) {
+    return escapeHtml(value).replace(/\\u0000/g, '')
   }
 
   async function ensureSession() {
@@ -647,6 +685,7 @@ function buildLiveChatWidgetScript(defaultShareKey) {
     sessionId = data.sessionId
     visitorKey = data.visitorKey
     messages = data.messages || []
+    shareConfig = data.share || shareConfig
     localStorage.setItem(storageKey, visitorKey)
   }
 
@@ -729,6 +768,64 @@ function recordTokenUsage({ userId, conversationId, messageId, usage }) {
 function writeSse(res, event, data) {
   res.write(`event: ${event}\n`)
   res.write(`data: ${JSON.stringify(data)}\n\n`)
+}
+
+function readRawBody({ limit }) {
+  return (req, res, next) => {
+    const chunks = []
+    let size = 0
+    req.on('data', (chunk) => {
+      size += chunk.length
+      if (size > limit) {
+        res.status(413).json({ error: 'UPLOAD_TOO_LARGE' })
+        req.destroy()
+        return
+      }
+      chunks.push(chunk)
+    })
+    req.on('end', () => {
+      req.rawBody = Buffer.concat(chunks)
+      next()
+    })
+    req.on('error', next)
+  }
+}
+
+function parseSingleMultipartFile(req) {
+  const contentType = req.headers['content-type'] || ''
+  const boundaryMatch = contentType.match(/boundary=(?:"([^"]+)"|([^;]+))/i)
+  if (!boundaryMatch) return null
+  const boundary = `--${boundaryMatch[1] || boundaryMatch[2]}`
+  const body = req.rawBody
+  if (!body?.length) return null
+  const bodyText = body.toString('latin1')
+  const partStart = bodyText.indexOf(boundary)
+  if (partStart < 0) return null
+  const headerStart = bodyText.indexOf('\r\n', partStart) + 2
+  const headerEnd = bodyText.indexOf('\r\n\r\n', headerStart)
+  if (headerStart < 2 || headerEnd < 0) return null
+  const headers = bodyText.slice(headerStart, headerEnd)
+  if (!/filename=/i.test(headers)) return null
+  const contentTypeMatch = headers.match(/content-type:\s*([^\r\n]+)/i)
+  const contentStart = headerEnd + 4
+  const nextBoundary = bodyText.indexOf(`\r\n${boundary}`, contentStart)
+  if (nextBoundary < 0) return null
+  return {
+    contentType: (contentTypeMatch?.[1] || '').trim().toLowerCase(),
+    buffer: body.subarray(contentStart, nextBoundary)
+  }
+}
+
+function isPng(buffer) {
+  return buffer?.length > 8 &&
+    buffer[0] === 0x89 &&
+    buffer[1] === 0x50 &&
+    buffer[2] === 0x4e &&
+    buffer[3] === 0x47 &&
+    buffer[4] === 0x0d &&
+    buffer[5] === 0x0a &&
+    buffer[6] === 0x1a &&
+    buffer[7] === 0x0a
 }
 
 async function exchangeMcpOAuthCode(server, storedState, code) {

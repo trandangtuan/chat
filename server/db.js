@@ -143,6 +143,7 @@ db.exec(`
     share_key TEXT NOT NULL UNIQUE,
     name TEXT NOT NULL,
     allowed_origin TEXT,
+    icon_url TEXT,
     enabled INTEGER NOT NULL DEFAULT 1,
     created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
     updated_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP
@@ -198,6 +199,7 @@ ensureColumn('mcp_oauth_states', 'code_verifier', 'TEXT')
 ensureColumn('mcp_oauth_states', 'redirect_uri', 'TEXT')
 ensureColumn('mcp_oauth_states', 'resource', 'TEXT')
 ensureColumn('skills', 'description', 'TEXT')
+ensureColumn('live_chat_shares', 'icon_url', 'TEXT')
 
 export function upsertUser(user) {
   db.prepare(`

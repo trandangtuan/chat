@@ -26,6 +26,8 @@ function App() {
   const [mcpForm, setMcpForm] = useState(createEmptyMcpForm())
   const [liveChatName, setLiveChatName] = useState('')
   const [liveChatOrigin, setLiveChatOrigin] = useState('')
+  const [liveChatIconUrl, setLiveChatIconUrl] = useState('')
+  const [liveChatIconFile, setLiveChatIconFile] = useState(null)
   const [skillName, setSkillName] = useState('')
   const [skillDescription, setSkillDescription] = useState('')
   const [skillInstructions, setSkillInstructions] = useState('')
@@ -225,13 +227,32 @@ function App() {
   async function addLiveChatShare(event) {
     event.preventDefault()
     if (!liveChatName.trim()) return
+    let iconUrl = liveChatIconUrl.trim() || null
+    if (liveChatIconFile) {
+      const formData = new FormData()
+      formData.append('icon', liveChatIconFile)
+      const response = await fetch('/api/live-chat-icons', {
+        method: 'POST',
+        credentials: 'include',
+        body: formData
+      })
+      if (!response.ok) {
+        setSettingsError('Could not upload this icon. Please use a PNG file under 256 KB.')
+        return
+      }
+      const upload = await response.json()
+      iconUrl = upload.iconUrl
+    }
     const data = await api.post('/api/live-chat-shares', {
       name: liveChatName.trim(),
-      allowedOrigin: liveChatOrigin.trim() || null
+      allowedOrigin: liveChatOrigin.trim() || null,
+      iconUrl
     })
     setLiveChatShares((current) => [data.share, ...current])
     setLiveChatName('')
     setLiveChatOrigin('')
+    setLiveChatIconUrl('')
+    setLiveChatIconFile(null)
   }
 
   async function logout() {
@@ -287,6 +308,8 @@ function App() {
           memoryContent={memoryContent}
           liveChatName={liveChatName}
           liveChatOrigin={liveChatOrigin}
+          liveChatIconUrl={liveChatIconUrl}
+          liveChatIconFile={liveChatIconFile}
           onClose={() => setSettingsOpen(false)}
           onMcpFormChange={setMcpForm}
           onSkillNameChange={setSkillName}
@@ -298,6 +321,8 @@ function App() {
           onMemoryContentChange={setMemoryContent}
           onLiveChatNameChange={setLiveChatName}
           onLiveChatOriginChange={setLiveChatOrigin}
+          onLiveChatIconUrlChange={setLiveChatIconUrl}
+          onLiveChatIconFileChange={setLiveChatIconFile}
           onAddMcpServer={addMcpServer}
           onConnectMcpServer={connectMcpServer}
           onDeleteMcpServer={deleteMcpServer}

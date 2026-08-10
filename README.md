@@ -7,6 +7,7 @@ Node.js ChatGPT-style multi-user chat app.
 - Personal MCP server registry per user
 - Personal skills per user, with lightweight name/description selection before detailed instructions are injected
 - Shareable live chat widget script for embedding the owner's AI assistant on external websites
+- PNG icon uploads for live chat widgets
 - Personal rules and memory per user
 - OpenRouter chat completions from the server with `OPENROUTER_API_KEY`; otherwise the app returns a local development response
 - Streaming assistant responses with a `Thinking...` state while the first token is pending

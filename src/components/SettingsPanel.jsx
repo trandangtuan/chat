@@ -19,6 +19,8 @@ export function SettingsPanel({
   memoryContent,
   liveChatName,
   liveChatOrigin,
+  liveChatIconUrl,
+  liveChatIconFile,
   onMcpFormChange,
   onSkillNameChange,
   onSkillDescriptionChange,
@@ -29,6 +31,8 @@ export function SettingsPanel({
   onMemoryContentChange,
   onLiveChatNameChange,
   onLiveChatOriginChange,
+  onLiveChatIconUrlChange,
+  onLiveChatIconFileChange,
   onAddMcpServer,
   onConnectMcpServer,
   onDeleteMcpServer,
@@ -126,6 +130,12 @@ export function SettingsPanel({
               <form onSubmit={onAddLiveChatShare} className="setting-form">
                 <input value={liveChatName} onChange={(event) => onLiveChatNameChange(event.target.value)} placeholder="Website name" />
                 <input value={liveChatOrigin} onChange={(event) => onLiveChatOriginChange(event.target.value)} placeholder="Allowed origin, e.g. https://example.com" />
+                <input value={liveChatIconUrl} onChange={(event) => onLiveChatIconUrlChange(event.target.value)} placeholder="PNG icon URL, e.g. https://example.com/chat.png" />
+                <label className="file-input-label">
+                  Upload PNG icon
+                  <input type="file" accept="image/png" onChange={(event) => onLiveChatIconFileChange(event.target.files?.[0] || null)} />
+                  {liveChatIconFile && <small>{liveChatIconFile.name}</small>}
+                </label>
                 <button><Plus size={16} /> Create share</button>
               </form>
               <LiveChatShareList shares={liveChatShares || []} />
@@ -174,6 +184,7 @@ function LiveChatShareList({ shares }) {
         <article key={share.id}>
           <strong>{share.name}</strong>
           <small>{share.allowedOrigin || 'Any website origin'}</small>
+          {share.iconUrl && <img className="live-chat-icon-preview" src={share.iconUrl} alt="" />}
           <label>
             Script tag
             <textarea readOnly value={share.scriptTag} />

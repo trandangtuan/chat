@@ -18,6 +18,8 @@ Time zone: Asia/Ho_Chi_Minh (UTC+07:00).
 - Add skill descriptions and select relevant skills by name/description before injecting detailed skill instructions.
 - Add shareable live chat embeds with public widget sessions that reuse the owner's MCP servers, skills, rules, and memory.
 - Redesign the live chat widget launcher and panel for clearer modern UX across external websites.
+- Use an icon-only live chat launcher with optional per-share PNG icon URLs.
+- Add authenticated PNG uploads for live chat launcher icons.
 
 ## 2026-08-09 16:17:53 +0700 - `d8c89e3`
 

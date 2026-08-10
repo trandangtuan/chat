@@ -800,6 +800,27 @@ textarea[readonly] {
   font-weight: 700;
 }
 
+.live-chat-icon-preview {
+  width: 44px;
+  height: 44px;
+  border: 1px solid var(--line);
+  border-radius: 999px;
+  object-fit: cover;
+  background: #f8fafc;
+}
+
+.file-input-label {
+  display: grid;
+  gap: 7px;
+  color: var(--muted);
+  font-size: 12px;
+  font-weight: 700;
+}
+
+.file-input-label input {
+  padding: 8px;
+}
+
 .live-chat-share-list textarea {
   width: 100%;
   min-height: 76px;
