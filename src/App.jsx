@@ -24,6 +24,7 @@ function App() {
   const [tokenUsage, setTokenUsage] = useState({ usage: [], summary: [] })
   const [mcpForm, setMcpForm] = useState(createEmptyMcpForm())
   const [skillName, setSkillName] = useState('')
+  const [skillDescription, setSkillDescription] = useState('')
   const [skillInstructions, setSkillInstructions] = useState('')
   const [ruleTitle, setRuleTitle] = useState('')
   const [ruleInstruction, setRuleInstruction] = useState('')
@@ -187,9 +188,14 @@ function App() {
   async function addSkill(event) {
     event.preventDefault()
     if (!skillName.trim() || !skillInstructions.trim()) return
-    const data = await api.post('/api/skills', { name: skillName.trim(), instructions: skillInstructions.trim() })
+    const data = await api.post('/api/skills', {
+      name: skillName.trim(),
+      description: skillDescription.trim() || null,
+      instructions: skillInstructions.trim()
+    })
     setSkills((current) => [data.skill, ...current])
     setSkillName('')
+    setSkillDescription('')
     setSkillInstructions('')
   }
 
@@ -255,6 +261,7 @@ function App() {
           settingsError={settingsError}
           mcpForm={mcpForm}
           skillName={skillName}
+          skillDescription={skillDescription}
           skillInstructions={skillInstructions}
           ruleTitle={ruleTitle}
           ruleInstruction={ruleInstruction}
@@ -263,6 +270,7 @@ function App() {
           onClose={() => setSettingsOpen(false)}
           onMcpFormChange={setMcpForm}
           onSkillNameChange={setSkillName}
+          onSkillDescriptionChange={setSkillDescription}
           onSkillInstructionsChange={setSkillInstructions}
           onRuleTitleChange={setRuleTitle}
           onRuleInstructionChange={setRuleInstruction}

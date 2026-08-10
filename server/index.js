@@ -354,12 +354,13 @@ app.get('/api/usage/token-history', requireUser, (req, res) => {
 app.post('/api/skills', requireUser, (req, res) => {
   const payload = z.object({
     name: z.string().min(1).max(80),
+    description: z.string().max(500).optional().nullable(),
     instructions: z.string().min(1).max(10000),
     enabled: z.boolean().default(true)
   }).parse(req.body)
   const id = nanoid()
-  db.prepare('INSERT INTO skills (id, user_id, name, instructions, enabled) VALUES (?, ?, ?, ?, ?)')
-    .run(id, req.user.id, payload.name, payload.instructions, payload.enabled ? 1 : 0)
+  db.prepare('INSERT INTO skills (id, user_id, name, description, instructions, enabled) VALUES (?, ?, ?, ?, ?, ?)')
+    .run(id, req.user.id, payload.name, payload.description || null, payload.instructions, payload.enabled ? 1 : 0)
   res.status(201).json({ skill: db.prepare('SELECT * FROM skills WHERE id = ?').get(id) })
 })
 
@@ -387,7 +388,7 @@ function assertOwnsConversation(userId, conversationId) {
 }
 
 function listSkills(userId) {
-  return db.prepare('SELECT id, name, instructions, enabled, created_at, updated_at FROM skills WHERE user_id = ? ORDER BY created_at DESC')
+  return db.prepare('SELECT id, name, description, instructions, enabled, created_at, updated_at FROM skills WHERE user_id = ? ORDER BY created_at DESC')
     .all(userId)
     .map((skill) => ({ ...skill, enabled: Boolean(skill.enabled) }))
 }

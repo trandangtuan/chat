@@ -10,6 +10,7 @@ export function SettingsPanel({
   settingsError,
   mcpForm,
   skillName,
+  skillDescription,
   skillInstructions,
   ruleTitle,
   ruleInstruction,
@@ -17,6 +18,7 @@ export function SettingsPanel({
   memoryContent,
   onMcpFormChange,
   onSkillNameChange,
+  onSkillDescriptionChange,
   onSkillInstructionsChange,
   onRuleTitleChange,
   onRuleInstructionChange,
@@ -77,6 +79,7 @@ export function SettingsPanel({
           <SettingsSection icon={<Boxes size={17} />} title="Skill settings">
             <form onSubmit={onAddSkill} className="setting-form">
               <input value={skillName} onChange={(event) => onSkillNameChange(event.target.value)} placeholder="Skill name" />
+              <input value={skillDescription} onChange={(event) => onSkillDescriptionChange(event.target.value)} placeholder="Short description for AI selection" />
               <textarea value={skillInstructions} onChange={(event) => onSkillInstructionsChange(event.target.value)} placeholder="Instructions for this skill" />
               <button><Plus size={16} /> Add skill</button>
             </form>
@@ -207,7 +210,13 @@ function TokenUsagePanel({ tokenUsage }) {
 function SettingItemList({ items, emptyText, titleKey = 'title', contentKey }) {
   return (
     <div className="setting-item-list">
-      {items.map((item) => <article key={item.id}><strong>{item[titleKey]}</strong><p>{item[contentKey]}</p></article>)}
+      {items.map((item) => (
+        <article key={item.id}>
+          <strong>{item[titleKey]}</strong>
+          {item.description && <small>{item.description}</small>}
+          <p>{item[contentKey]}</p>
+        </article>
+      ))}
       {!items.length && <small>{emptyText}</small>}
     </div>
   )

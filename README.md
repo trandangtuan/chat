@@ -5,7 +5,7 @@ Node.js ChatGPT-style multi-user chat app.
 - SSO OAuth login through `https://auth.tdshift.info`
 - Private conversations and messages per authenticated user
 - Personal MCP server registry per user
-- Personal skill instructions per user
+- Personal skills per user, with lightweight name/description selection before detailed instructions are injected
 - Personal rules and memory per user
 - OpenRouter chat completions from the server with `OPENROUTER_API_KEY`; otherwise the app returns a local development response
 - Streaming assistant responses with a `Thinking...` state while the first token is pending

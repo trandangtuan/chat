@@ -2,7 +2,7 @@ import { config } from './config.js'
 import { buildOpenRouterTools, executeOpenRouterTool } from './mcp.js'
 
 export async function generateAssistantReply({ user, messages, skills, mcpServers, rules, memories }) {
-  const request = buildChatRequest({ user, messages, skills, mcpServers, rules, memories })
+  const request = await buildChatRequest({ user, messages, skills, mcpServers, rules, memories })
   if (!config.openrouterApiKey) {
     const content = buildLocalReply(request)
     return {
@@ -26,7 +26,7 @@ export async function generateAssistantReply({ user, messages, skills, mcpServer
 }
 
 export async function streamAssistantReply({ user, messages, skills, mcpServers, rules, memories, onDelta }) {
-  const request = buildChatRequest({ user, messages, skills, mcpServers, rules, memories })
+  const request = await buildChatRequest({ user, messages, skills, mcpServers, rules, memories })
   if (!config.openrouterApiKey) {
     const content = buildLocalReply(request)
     await onDelta(content)
@@ -83,8 +83,9 @@ export async function streamAssistantReply({ user, messages, skills, mcpServers,
   }
 }
 
-function buildChatRequest({ user, messages, skills, mcpServers, rules = [], memories = [] }) {
+async function buildChatRequest({ user, messages, skills, mcpServers, rules = [], memories = [] }) {
   const enabledSkills = skills.filter((skill) => skill.enabled)
+  const selectedSkills = await selectRelevantSkills({ messages, skills: enabledSkills })
   const enabledMcp = mcpServers.filter((server) => server.enabled)
   const enabledRules = rules.filter((rule) => rule.enabled)
   const enabledMemories = memories.filter((memory) => memory.enabled)
@@ -93,13 +94,15 @@ function buildChatRequest({ user, messages, skills, mcpServers, rules = [], memo
     `Current user: ${user.name || user.email || user.id}.`,
     enabledRules.length ? `User rules:\n${enabledRules.map((rule) => `- ${rule.title}: ${rule.instruction}`).join('\n')}` : '',
     enabledMemories.length ? `User memory:\n${enabledMemories.map((memory) => `- ${memory.title}: ${memory.content}`).join('\n')}` : '',
-    enabledSkills.length ? `User skills:\n${enabledSkills.map((skill) => `- ${skill.name}: ${skill.instructions}`).join('\n')}` : '',
+    enabledSkills.length ? `Available user skills:\n${enabledSkills.map((skill) => `- ${skill.name}: ${skill.description || 'No description provided.'}`).join('\n')}` : '',
+    selectedSkills.length ? `Selected skill instructions:\n${selectedSkills.map((skill) => `## ${skill.name}\n${skill.instructions}`).join('\n\n')}` : 'No user skill instructions were selected for this request.',
     enabledMcp.length ? `Available user MCP servers:\n${enabledMcp.map((server) => `- ${server.name} (${server.transport})`).join('\n')}` : '',
     'Do not claim you executed MCP tools unless the application provided tool results.'
   ].filter(Boolean).join('\n\n')
 
   return {
     enabledSkills,
+    selectedSkills,
     enabledMcp,
     enabledRules,
     enabledMemories,
@@ -107,6 +110,76 @@ function buildChatRequest({ user, messages, skills, mcpServers, rules = [], memo
       { role: 'system', content: system },
       ...messages.map((message) => ({ role: message.role, content: message.content }))
     ]
+  }
+}
+
+async function selectRelevantSkills({ messages, skills }) {
+  if (!skills.length) return []
+  if (!config.openrouterApiKey) return skills
+
+  const latestUserMessage = [...messages].reverse().find((message) => message.role === 'user')?.content || ''
+  if (!latestUserMessage.trim()) return []
+
+  const catalog = skills.map((skill) => ({
+    id: skill.id,
+    name: skill.name,
+    description: skill.description || ''
+  }))
+
+  const response = await fetch('https://openrouter.ai/api/v1/chat/completions', {
+    method: 'POST',
+    headers: openRouterHeaders(),
+    body: JSON.stringify({
+      model: config.openrouterModel,
+      temperature: 0,
+      messages: [
+        {
+          role: 'system',
+          content: [
+            'Choose which user skills are relevant for the next assistant response.',
+            'You only see the skill name and description at this step.',
+            'Return strict JSON with this shape: {"skill_ids":["id"]}.',
+            'Return an empty array when no skill is relevant.'
+          ].join(' ')
+        },
+        {
+          role: 'user',
+          content: JSON.stringify({
+            latest_user_message: latestUserMessage,
+            available_skills: catalog
+          })
+        }
+      ]
+    })
+  })
+
+  if (!response.ok) {
+    const detail = await response.text().catch(() => '')
+    console.error('OpenRouter skill selection failed', response.status, detail)
+    return []
+  }
+
+  const completion = await response.json()
+  const content = completion.choices?.[0]?.message?.content || ''
+  const selectedIds = parseSelectedSkillIds(content)
+  const selected = new Set(selectedIds)
+  return skills.filter((skill) => selected.has(skill.id))
+}
+
+function parseSelectedSkillIds(content) {
+  try {
+    const parsed = JSON.parse(content)
+    if (!Array.isArray(parsed.skill_ids)) return []
+    return parsed.skill_ids.map(String)
+  } catch {
+    const match = content.match(/\{[\s\S]*\}/)
+    if (!match) return []
+    try {
+      const parsed = JSON.parse(match[0])
+      return Array.isArray(parsed.skill_ids) ? parsed.skill_ids.map(String) : []
+    } catch {
+      return []
+    }
   }
 }
 
