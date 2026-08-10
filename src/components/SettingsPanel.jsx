@@ -41,6 +41,7 @@ export function SettingsPanel({
   onAddRule,
   onAddMemory,
   onAddLiveChatShare,
+  onDeleteLiveChatShare,
   onClose
 }) {
   const [activeSetting, setActiveSetting] = useState('mcp')
@@ -138,7 +139,7 @@ export function SettingsPanel({
                 </label>
                 <button><Plus size={16} /> Create share</button>
               </form>
-              <LiveChatShareList shares={liveChatShares || []} />
+              <LiveChatShareList shares={liveChatShares || []} onDelete={onDeleteLiveChatShare} />
             </SettingsSection>
           )}
         </div>
@@ -177,7 +178,7 @@ function SettingsMenu({ activeSetting, onSelect }) {
   )
 }
 
-function LiveChatShareList({ shares }) {
+function LiveChatShareList({ shares, onDelete }) {
   return (
     <div className="live-chat-share-list">
       {shares.map((share) => (
@@ -193,6 +194,7 @@ function LiveChatShareList({ shares }) {
             Script URL
             <input readOnly value={share.scriptUrl} />
           </label>
+          <button className="delete-server" type="button" onClick={() => onDelete(share.id)} aria-label={`Delete ${share.name}`}><Trash2 size={14} /> Delete</button>
         </article>
       ))}
       {!shares.length && <small>No live chat shares yet</small>}

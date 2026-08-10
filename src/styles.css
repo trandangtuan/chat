@@ -382,6 +382,12 @@ button { cursor: pointer; }
   margin-bottom: 12px;
 }
 .section-header h3 { margin: 0; }
+.section-actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  justify-content: flex-end;
+}
 .section-header button {
   min-height: 34px;
   display: inline-flex;

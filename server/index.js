@@ -403,6 +403,12 @@ app.post('/api/live-chat-shares', requireUser, (req, res) => {
   res.status(201).json({ share: normalizeLiveChatShare(share) })
 })
 
+app.delete('/api/live-chat-shares/:id', requireUser, (req, res) => {
+  const result = db.prepare('DELETE FROM live_chat_shares WHERE id = ? AND user_id = ?').run(req.params.id, req.user.id)
+  if (result.changes === 0) return res.status(404).json({ error: 'LIVE_CHAT_SHARE_NOT_FOUND' })
+  res.json({ ok: true })
+})
+
 app.get('/live-chat/widget.js', (req, res) => {
   res.type('application/javascript').send(buildLiveChatWidgetScript(String(req.query.key || '')))
 })

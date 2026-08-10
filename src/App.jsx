@@ -255,6 +255,16 @@ function App() {
     setLiveChatIconFile(null)
   }
 
+  async function deleteLiveChatShare(shareId) {
+    setSettingsError('')
+    const response = await fetch(`/api/live-chat-shares/${shareId}`, { method: 'DELETE', credentials: 'include' })
+    if (!response.ok) {
+      setSettingsError('Could not delete this live chat share. Please try again.')
+      return
+    }
+    setLiveChatShares((current) => current.filter((share) => share.id !== shareId))
+  }
+
   async function logout() {
     await fetch('/auth/logout', { method: 'POST', credentials: 'include' })
     window.location.reload()
@@ -331,6 +341,7 @@ function App() {
           onAddRule={addRule}
           onAddMemory={addMemory}
           onAddLiveChatShare={addLiveChatShare}
+          onDeleteLiveChatShare={deleteLiveChatShare}
         />
       )}
     </div>

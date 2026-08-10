@@ -20,6 +20,7 @@ Time zone: Asia/Ho_Chi_Minh (UTC+07:00).
 - Redesign the live chat widget launcher and panel for clearer modern UX across external websites.
 - Use an icon-only live chat launcher with optional per-share PNG icon URLs.
 - Add authenticated PNG uploads for live chat launcher icons.
+- Add delete action for live chat shares.
 
 ## 2026-08-09 16:17:53 +0700 - `d8c89e3`
 
