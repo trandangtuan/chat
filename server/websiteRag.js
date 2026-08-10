@@ -6,6 +6,8 @@ const sitemapParser = new XMLParser({ ignoreAttributes: false })
 const userAgent = process.env.WEBSITE_RAG_USER_AGENT || 'TDShiftChatRAG/0.1'
 const maxPagesPerSource = Number(process.env.WEBSITE_RAG_MAX_PAGES || 200)
 const crawlTimeoutMs = Number(process.env.WEBSITE_RAG_TIMEOUT_MS || 12000)
+const chunkSize = Number(process.env.WEBSITE_RAG_CHUNK_SIZE || 12000)
+const chunkOverlap = Number(process.env.WEBSITE_RAG_CHUNK_OVERLAP || 1200)
 
 export async function indexWebsiteSource({ userId, sourceId, url }) {
   const baseUrl = normalizeWebsiteUrl(url)
@@ -24,18 +26,21 @@ export async function indexWebsiteSource({ userId, sourceId, url }) {
     db.prepare('DELETE FROM website_pages_fts WHERE source_id = ? AND user_id = ?').run(sourceId, userId)
 
     const insertPage = db.prepare(`
-      INSERT INTO website_pages (id, source_id, user_id, url, title, content)
-      VALUES (?, ?, ?, ?, ?, ?)
+      INSERT INTO website_pages (id, source_id, user_id, url, title, chunk_index, content)
+      VALUES (?, ?, ?, ?, ?, ?, ?)
     `)
     const insertFts = db.prepare(`
-      INSERT INTO website_pages_fts (page_id, source_id, user_id, url, title, content)
-      VALUES (?, ?, ?, ?, ?, ?)
+      INSERT INTO website_pages_fts (page_id, source_id, user_id, url, chunk_index, title, content)
+      VALUES (?, ?, ?, ?, ?, ?, ?)
     `)
 
     for (const page of pages) {
-      const pageId = crypto.createHash('sha256').update(`${sourceId}:${page.url}`).digest('hex')
-      insertPage.run(pageId, sourceId, userId, page.url, page.title, page.content)
-      insertFts.run(pageId, sourceId, userId, page.url, page.title, page.content)
+      const chunks = chunkText(page.content)
+      chunks.forEach((chunk, index) => {
+        const pageId = crypto.createHash('sha256').update(`${sourceId}:${page.url}:${index}`).digest('hex')
+        insertPage.run(pageId, sourceId, userId, page.url, page.title, index, chunk)
+        insertFts.run(pageId, sourceId, userId, page.url, index, page.title, chunk)
+      })
     }
   })
   replacePages()
@@ -47,7 +52,7 @@ export function searchWebsiteContext({ userId, query, limit = 6 }) {
   const ftsQuery = makeFtsQuery(query)
   if (!ftsQuery) return []
   return db.prepare(`
-    SELECT page_id, source_id, url, title,
+    SELECT page_id, source_id, url, title, chunk_index,
            snippet(website_pages_fts, 5, '[', ']', ' ... ', 32) AS snippet,
            bm25(website_pages_fts) AS score
     FROM website_pages_fts
@@ -64,6 +69,7 @@ export function buildWebsiteContextBlock(matches) {
     ...matches.map((match, index) => [
       `[${index + 1}] ${match.title || match.url}`,
       `URL: ${match.url}`,
+      `Chunk: ${Number(match.chunk_index || 0) + 1}`,
       `Excerpt: ${stripHighlights(match.snippet || '')}`
     ].join('\n'))
   ].join('\n\n')
@@ -130,7 +136,7 @@ async function fetchPage(url) {
   const title = extractTitle(html) || url
   const content = htmlToText(html)
   if (content.length < 120) return null
-  return { url: response.url || url, title: title.slice(0, 300), content: content.slice(0, 80000) }
+  return { url: response.url || url, title: title.slice(0, 300), content }
 }
 
 async function fetchText(url) {
@@ -194,6 +200,28 @@ function sameHost(baseUrl, pageUrl) {
 function makeFtsQuery(value) {
   const terms = String(value || '').toLowerCase().match(/[\p{L}\p{N}_]+/gu) || []
   return terms.filter((term) => term.length > 1).slice(0, 12).map((term) => `"${term}"`).join(' OR ')
+}
+
+function chunkText(content) {
+  if (content.length <= chunkSize) return [content]
+  const chunks = []
+  let start = 0
+  while (start < content.length) {
+    let end = Math.min(start + chunkSize, content.length)
+    if (end < content.length) {
+      const boundary = Math.max(
+        content.lastIndexOf('. ', end),
+        content.lastIndexOf('? ', end),
+        content.lastIndexOf('! ', end),
+        content.lastIndexOf('\n', end)
+      )
+      if (boundary > start + chunkSize * 0.6) end = boundary + 1
+    }
+    chunks.push(content.slice(start, end).trim())
+    if (end >= content.length) break
+    start = Math.max(end - chunkOverlap, start + 1)
+  }
+  return chunks.filter(Boolean)
 }
 
 function stripHighlights(value) {

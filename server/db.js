@@ -184,6 +184,7 @@ db.exec(`
     user_id TEXT NOT NULL REFERENCES users(id) ON DELETE CASCADE,
     url TEXT NOT NULL,
     title TEXT NOT NULL,
+    chunk_index INTEGER NOT NULL DEFAULT 0,
     content TEXT NOT NULL,
     created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP
   );
@@ -193,6 +194,7 @@ db.exec(`
     source_id UNINDEXED,
     user_id UNINDEXED,
     url UNINDEXED,
+    chunk_index UNINDEXED,
     title,
     content
   );
@@ -241,6 +243,8 @@ ensureColumn('website_sources', 'status', "TEXT NOT NULL DEFAULT 'pending'")
 ensureColumn('website_sources', 'page_count', 'INTEGER NOT NULL DEFAULT 0')
 ensureColumn('website_sources', 'error', 'TEXT')
 ensureColumn('website_sources', 'enabled', 'INTEGER NOT NULL DEFAULT 1')
+ensureColumn('website_pages', 'chunk_index', 'INTEGER NOT NULL DEFAULT 0')
+ensureWebsiteFtsSchema()
 
 export function upsertUser(user) {
   db.prepare(`
@@ -257,4 +261,22 @@ export function upsertUser(user) {
 function ensureColumn(table, column, definition) {
   const exists = db.prepare(`PRAGMA table_info(${table})`).all().some((field) => field.name === column)
   if (!exists) db.exec(`ALTER TABLE ${table} ADD COLUMN ${column} ${definition}`)
+}
+
+function ensureWebsiteFtsSchema() {
+  const columns = db.prepare('PRAGMA table_info(website_pages_fts)').all().map((field) => field.name)
+  if (columns.length && !columns.includes('chunk_index')) {
+    db.exec(`
+      DROP TABLE website_pages_fts;
+      CREATE VIRTUAL TABLE website_pages_fts USING fts5(
+        page_id UNINDEXED,
+        source_id UNINDEXED,
+        user_id UNINDEXED,
+        url UNINDEXED,
+        chunk_index UNINDEXED,
+        title,
+        content
+      );
+    `)
+  }
 }

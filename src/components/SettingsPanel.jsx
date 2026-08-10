@@ -269,8 +269,8 @@ function WebsitePageView({ source, pages, onBack }) {
         {pages.map((page) => (
           <article key={page.id}>
             <a href={page.url} target="_blank" rel="noreferrer">{page.title || page.url}</a>
-            <small>{page.url} · {formatNumber(page.contentLength)} chars</small>
-            <p>{page.preview}</p>
+            <small>{page.url} · Chunk {Number(page.chunkIndex || 0) + 1} · {formatNumber(page.contentLength)} chars</small>
+            <p>{page.content}</p>
           </article>
         ))}
         {!pages.length && <small>No indexed pages found for this source</small>}

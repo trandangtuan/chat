@@ -354,10 +354,10 @@ app.get('/api/website-sources/:id/pages', requireUser, (req, res) => {
   if (!source) return res.status(404).json({ error: 'WEBSITE_SOURCE_NOT_FOUND' })
   const limit = Math.min(Number(req.query.limit || 100), 500)
   const pages = db.prepare(`
-    SELECT id, url, title, substr(content, 1, 900) AS preview, length(content) AS contentLength, created_at
+    SELECT id, url, title, chunk_index AS chunkIndex, content, length(content) AS contentLength, created_at
     FROM website_pages
     WHERE source_id = ? AND user_id = ?
-    ORDER BY title ASC
+    ORDER BY title ASC, chunk_index ASC
     LIMIT ?
   `).all(req.params.id, req.user.id, limit)
   res.json({ pages })
